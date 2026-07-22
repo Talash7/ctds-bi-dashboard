@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { cn } from '@/lib/utils'
 
 interface ChatMessage {
@@ -55,12 +56,7 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">AI Chat</h1>
-        <p className="text-muted-foreground">
-          Ask natural-language questions about students, courses, and results.
-        </p>
-      </div>
+      <PageHeader title="AI Chat" subtitle="Ask natural-language questions about students, courses, and results." />
 
       <div className="mt-4 flex-1 space-y-4 overflow-y-auto rounded-md border border-border bg-card p-4">
         {messages.length === 0 && (

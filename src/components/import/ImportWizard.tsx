@@ -21,6 +21,7 @@ import type { ImportConfig } from '@/lib/import/configs'
 interface PreviewRow {
   raw: Record<string, string>
   errors: string[]
+  warnings: string[]
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   value?: any
 }
@@ -49,7 +50,7 @@ export function ImportWizard<T>({ config }: { config: ImportConfig<T> }) {
       const lookups = await buildImportLookups()
       const results: PreviewRow[] = rawRows.map((raw) => {
         const result = config.validateRow(raw, lookups)
-        return { raw, errors: result.errors, value: result.value }
+        return { raw, errors: result.errors, warnings: result.warnings ?? [], value: result.value }
       })
       setPreview(results)
     } catch (err) {
@@ -72,11 +73,16 @@ export function ImportWizard<T>({ config }: { config: ImportConfig<T> }) {
     setProgress(0)
     let inserted = 0
     let skipped = preview.length - validRows.length
+    const flaggedForReview: string[] = []
 
     for (let i = 0; i < validRows.length; i++) {
       try {
         await config.insertOne(validRows[i].value)
         inserted++
+        if (validRows[i].warnings.length) {
+          const code = validRows[i].raw.student_code ?? validRows[i].raw.code ?? `row ${i + 1}`
+          flaggedForReview.push(`${code}: ${validRows[i].warnings.join('; ')}`)
+        }
       } catch {
         skipped++
       }
@@ -89,6 +95,15 @@ export function ImportWizard<T>({ config }: { config: ImportConfig<T> }) {
       status: skipped === 0 ? 'success' : inserted === 0 ? 'failed' : 'partial',
       user_email: user?.email ?? null,
     })
+
+    if (flaggedForReview.length) {
+      await supabase.from('audit_log').insert({
+        action: 'import_warning',
+        entity: config.label,
+        details: `${flaggedForReview.length} row(s) imported with fields left blank for manual review:\n${flaggedForReview.join('\n')}`,
+        user_email: user?.email ?? null,
+      })
+    }
 
     setSummary({ inserted, skipped })
     setImporting(false)
@@ -164,7 +179,7 @@ export function ImportWizard<T>({ config }: { config: ImportConfig<T> }) {
                   {config.previewColumns.map((c) => (
                     <TableHead key={c.header}>{c.header}</TableHead>
                   ))}
-                  <TableHead>Errors</TableHead>
+                  <TableHead>Errors / Warnings</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -183,8 +198,13 @@ export function ImportWizard<T>({ config }: { config: ImportConfig<T> }) {
                         {c.get(row.raw)}
                       </TableCell>
                     ))}
-                    <TableCell className="text-sm text-destructive">
-                      {row.errors.join('; ')}
+                    <TableCell className="text-sm">
+                      {row.errors.length > 0 && (
+                        <span className="text-destructive">{row.errors.join('; ')}</span>
+                      )}
+                      {row.warnings.length > 0 && (
+                        <span className="text-gold-foreground">{row.warnings.join('; ')}</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

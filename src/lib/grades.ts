@@ -1,28 +1,35 @@
 export const GRADE_LETTERS = ['A', 'B', 'C', 'D', 'F', 'Abs'] as const
 export type GradeLetter = (typeof GRADE_LETTERS)[number]
 
-const GRADE_POINTS: Record<GradeLetter, number> = {
-  A: 4.0,
-  B: 3.0,
-  C: 2.0,
-  D: 1.0,
-  F: 0.0,
-  Abs: 0.0,
+/** score is the single source of truth. grade_letter/grade_points/status are always derived from it. */
+export function gradeLetterForScore(score: number): GradeLetter {
+  if (score >= 70) return 'A'
+  if (score >= 60) return 'B'
+  if (score >= 50) return 'C'
+  if (score >= 40) return 'D'
+  return 'F'
 }
 
-const GRADE_STATUS: Record<GradeLetter, string> = {
-  A: 'Passed',
-  B: 'Passed',
-  C: 'Passed',
-  D: 'Passed',
-  F: 'Failed',
-  Abs: 'Absent',
+export function gradePointsForScore(score: number): number {
+  return Math.round((score / 25) * 100) / 100
 }
 
-export function gradePointsFor(letter: string): number {
-  return GRADE_POINTS[letter as GradeLetter] ?? 0
+export function statusForLetter(letter: GradeLetter): string {
+  if (letter === 'Abs') return 'Absent'
+  return letter === 'F' ? 'Failed' : 'Passed'
 }
 
-export function statusFor(letter: string): string {
-  return GRADE_STATUS[letter as GradeLetter] ?? 'Passed'
+export interface DerivedResultFields {
+  grade_letter: GradeLetter
+  grade_points: number
+  status: string
+}
+
+/** null score = no-score-entered absence path. */
+export function deriveResultFields(score: number | null): DerivedResultFields {
+  if (score == null) {
+    return { grade_letter: 'Abs', grade_points: 0, status: 'Absent' }
+  }
+  const grade_letter = gradeLetterForScore(score)
+  return { grade_letter, grade_points: gradePointsForScore(score), status: statusForLetter(grade_letter) }
 }

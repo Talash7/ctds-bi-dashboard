@@ -48,7 +48,8 @@ export function StudentForm({ open, onOpenChange, student, programs, onSubmit }:
   const [programId, setProgramId] = useState('')
   const [level, setLevel] = useState('1')
   const [enrollmentStatus, setEnrollmentStatus] = useState(ENROLLMENT_STATUS_OPTIONS[0])
-  const [gpa, setGpa] = useState('')
+  const [admissionYear, setAdmissionYear] = useState('')
+  const [batch, setBatch] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -59,7 +60,8 @@ export function StudentForm({ open, onOpenChange, student, programs, onSubmit }:
       setProgramId(student?.program_id ?? programs[0]?.id ?? '')
       setLevel(String(student?.level ?? 1))
       setEnrollmentStatus(student?.enrollment_status ?? ENROLLMENT_STATUS_OPTIONS[0])
-      setGpa(student?.gpa != null ? String(student.gpa) : '')
+      setAdmissionYear(student?.admission_year != null ? String(student.admission_year) : '')
+      setBatch(student?.batch ?? '')
       setError(null)
     }
   }, [open, student, programs])
@@ -77,11 +79,11 @@ export function StudentForm({ open, onOpenChange, student, programs, onSubmit }:
       setError('Level must be 1, 2, or 3.')
       return
     }
-    let gpaValue: number | null = null
-    if (gpa.trim() !== '') {
-      gpaValue = Number(gpa)
-      if (Number.isNaN(gpaValue) || gpaValue < 0 || gpaValue > 4) {
-        setError('GPA must be a number between 0 and 4.')
+    let admissionYearValue: number | null = null
+    if (admissionYear.trim() !== '') {
+      admissionYearValue = Number(admissionYear)
+      if (!Number.isInteger(admissionYearValue) || admissionYearValue < 2000 || admissionYearValue > 2100) {
+        setError('Admission year must be a valid 4-digit year.')
         return
       }
     }
@@ -94,7 +96,8 @@ export function StudentForm({ open, onOpenChange, student, programs, onSubmit }:
         program_id: programId,
         level: levelNum,
         enrollment_status: enrollmentStatus,
-        gpa: gpaValue,
+        admission_year: admissionYearValue,
+        batch: batch.trim() || null,
       })
       onOpenChange(false)
     } catch (err) {
@@ -153,35 +156,52 @@ export function StudentForm({ open, onOpenChange, student, programs, onSubmit }:
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="status">Enrollment status</Label>
+            <Select value={enrollmentStatus} onValueChange={(v) => v && setEnrollmentStatus(v)}>
+              <SelectTrigger id="status" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ENROLLMENT_STATUS_OPTIONS.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="status">Enrollment status</Label>
-              <Select value={enrollmentStatus} onValueChange={(v) => v && setEnrollmentStatus(v)}>
-                <SelectTrigger id="status" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ENROLLMENT_STATUS_OPTIONS.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="admission_year">Admission year</Label>
+              <Input
+                id="admission_year"
+                type="number"
+                placeholder="e.g. 2024"
+                value={admissionYear}
+                onChange={(e) => setAdmissionYear(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="gpa">GPA (graduated only)</Label>
+              <Label htmlFor="batch">Batch</Label>
               <Input
-                id="gpa"
-                type="number"
-                step="0.01"
-                min="0"
-                max="4"
-                value={gpa}
-                onChange={(e) => setGpa(e.target.value)}
+                id="batch"
+                dir="auto"
+                placeholder="e.g. A"
+                value={batch}
+                onChange={(e) => setBatch(e.target.value)}
               />
             </div>
           </div>
+          {student && (
+            <div className="space-y-2">
+              <Label>GPA (cumulative)</Label>
+              <p className="rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                {student.gpa != null ? student.gpa.toFixed(2) : '—'} — computed automatically from this
+                student's results, across all levels.
+              </p>
+            </div>
+          )}
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

@@ -1,16 +1,15 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ImportWizard } from '@/components/import/ImportWizard'
 import { importConfigs } from '@/lib/import/configs'
+import { PageHeader } from '@/components/layout/PageHeader'
 
 export default function ImportPage() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">Data Import</h1>
-        <p className="text-muted-foreground">
-          Download a template, fill it in, then upload to preview and confirm before committing.
-        </p>
-      </div>
+    <div className="space-y-3">
+      <PageHeader
+        title="Data Import"
+        subtitle="Download a template, fill it in, then upload to preview and confirm before committing."
+      />
 
       <Tabs defaultValue="students">
         <TabsList>

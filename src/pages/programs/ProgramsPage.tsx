@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { GraduationCap, Users, TrendingUp, Plus, Pencil, Trash2 } from 'lucide-react'
-import { KpiCard } from '@/components/dashboard/KpiCard'
+import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { KpiGrid } from '@/components/dashboard/KpiGrid'
+import { PageHeader } from '@/components/layout/PageHeader'
+import type { CustomValue } from '@/lib/dashboard/kpiEngine'
 import { ProgramForm } from '@/components/programs/ProgramForm'
 import { usePrograms, type Program } from '@/hooks/usePrograms'
 import { useProgramStats } from '@/hooks/useProgramStats'
+import { useStudents } from '@/hooks/useStudents'
 import { useAuth } from '@/hooks/useAuth'
 import { canWrite } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
@@ -33,24 +36,23 @@ export default function ProgramsPage() {
   const { role } = useAuth()
   const { programs, loading, createProgram, updateProgram, deleteProgram } = usePrograms()
   const { stats, loading: statsLoading } = useProgramStats()
+  const { students } = useStudents()
   const writable = canWrite(role)
+  const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null)
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Program | null>(null)
   const [deleting, setDeleting] = useState<Program | null>(null)
 
-  const kpis = useMemo(() => {
-    const totalStudents = Object.values(stats).reduce((sum, s) => sum + s.studentCount, 0)
+  const kpiCustomValues: Record<string, CustomValue> = useMemo(() => {
     const rates = Object.values(stats)
       .map((s) => s.passRate)
       .filter((r): r is number => r != null)
     const overallPassRate = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : null
-    return {
-      total: programs.length,
-      totalStudents,
-      overallPassRate: overallPassRate != null ? `${overallPassRate.toFixed(1)}%` : '—',
-    }
-  }, [programs, stats])
+    return { programs_overall_pass_rate: { value: overallPassRate, format: 'percent' } }
+  }, [stats])
+
+  const kpiDatasets = useMemo(() => ({ programs, students }), [programs, students])
 
   async function handleDelete() {
     if (!deleting) return
@@ -65,30 +67,35 @@ export default function ProgramsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Programs</h1>
-          <p className="text-muted-foreground">Academic programs offered by the college</p>
-        </div>
-        {writable && (
-          <Button
-            onClick={() => {
-              setEditing(null)
-              setFormOpen(true)
-            }}
-          >
-            <Plus className="size-4" />
-            Add program
-          </Button>
-        )}
-      </div>
+    <div className="space-y-3">
+      <PageHeader
+        title="Programs"
+        subtitle="Academic programs offered by the college"
+        actions={
+          <>
+            {writable && (
+              <Button
+                onClick={() => {
+                  setEditing(null)
+                  setFormOpen(true)
+                }}
+              >
+                <Plus className="size-4" />
+                Add program
+              </Button>
+            )}
+            <div ref={setToolbarSlot} className="flex items-center gap-2" />
+          </>
+        }
+      />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <KpiCard label="Programs" value={kpis.total} icon={GraduationCap} accent />
-        <KpiCard label="Total students" value={kpis.totalStudents} icon={Users} />
-        <KpiCard label="Overall pass rate" value={kpis.overallPassRate} icon={TrendingUp} />
-      </div>
+      <KpiGrid
+        targetPage="programs"
+        datasets={kpiDatasets}
+        customValues={kpiCustomValues}
+        canEdit={role === 'admin'}
+        toolbarPortalTarget={toolbarSlot}
+      />
 
       {loading ? (
         <div className="space-y-2">

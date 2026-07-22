@@ -7,6 +7,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { Toaster } from '@/components/ui/sonner'
 import Login from '@/pages/Login'
 
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
 const StudentsPage = lazy(() => import('@/pages/students/StudentsPage'))
 const ProgramsPage = lazy(() => import('@/pages/programs/ProgramsPage'))
 const CoursesPage = lazy(() => import('@/pages/courses/CoursesPage'))
@@ -22,7 +23,7 @@ function PageFallback() {
 
 function App() {
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+    <ThemeProvider attribute="class" defaultTheme="light">
       <BrowserRouter>
         <AuthProvider>
           <Suspense fallback={<PageFallback />}>
@@ -35,7 +36,8 @@ function App() {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<Navigate to="/students" replace />} />
+                <Route index element={<Navigate to="/dashboard" replace />} />
+                <Route path="dashboard" element={<DashboardPage />} />
                 <Route path="students" element={<StudentsPage />} />
                 <Route path="programs" element={<ProgramsPage />} />
                 <Route path="courses" element={<CoursesPage />} />

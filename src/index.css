@@ -1,15 +1,23 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
+@import "@fontsource-variable/inter";
+@import "@fontsource/tajawal/400.css";
+@import "@fontsource/tajawal/500.css";
+@import "@fontsource/tajawal/700.css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', 'Noto Sans Arabic', sans-serif;
+    --font-sans: 'Inter Variable', 'Tajawal', sans-serif;
     --color-gold: var(--gold);
     --color-gold-foreground: var(--gold-foreground);
+    --color-gold-soft: var(--gold-soft);
+    --color-success: var(--success);
+    --color-success-foreground: var(--success-foreground);
+    --color-danger: var(--danger);
+    --color-danger-foreground: var(--danger-foreground);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -50,87 +58,147 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/*
+ * Bright glassmorphic theme — plum/rose/amber accents on a white/light-neutral
+ * glass surface (light, the default), with a true dark variant below using the
+ * same palette family (amber/rose doing more of the contrast work against the
+ * dark surface, since plum-deep is too close to the dark background itself).
+ */
 :root {
-    --background: oklch(0.985 0.003 250);
-    --foreground: oklch(0.22 0.03 255);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.22 0.03 255);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.22 0.03 255);
-    --primary: oklch(0.28 0.07 258);
-    --primary-foreground: oklch(0.985 0.005 250);
-    --secondary: oklch(0.95 0.01 255);
-    --secondary-foreground: oklch(0.28 0.07 258);
-    --muted: oklch(0.95 0.01 255);
-    --muted-foreground: oklch(0.48 0.03 255);
-    --accent: oklch(0.94 0.03 90);
-    --accent-foreground: oklch(0.28 0.07 258);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.9 0.01 255);
-    --input: oklch(0.9 0.01 255);
-    --ring: oklch(0.28 0.07 258 / 40%);
-    --gold: oklch(0.72 0.13 78);
-    --gold-foreground: oklch(0.2 0.03 255);
-    --chart-1: oklch(0.28 0.07 258);
-    --chart-2: oklch(0.72 0.13 78);
-    --chart-3: oklch(0.55 0.09 230);
-    --chart-4: oklch(0.6 0.14 30);
-    --chart-5: oklch(0.65 0.1 165);
-    --radius: 0.5rem;
-    --sidebar: oklch(0.28 0.07 258);
-    --sidebar-foreground: oklch(0.96 0.01 250);
-    --sidebar-primary: oklch(0.72 0.13 78);
-    --sidebar-primary-foreground: oklch(0.2 0.03 255);
-    --sidebar-accent: oklch(0.34 0.06 258);
-    --sidebar-accent-foreground: oklch(0.96 0.01 250);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.72 0.13 78);
+    --bg-base: #FAF7F9;
+    --bg-gradient: linear-gradient(160deg, #FDFBFC 0%, #F3E9EE 100%);
+    --glass-surface: rgba(255, 255, 255, 0.65);
+    --glass-border: rgba(255, 255, 255, 0.9);
+
+    --background: #FAF7F9;
+    --foreground: #451952;
+    --card: rgba(255, 255, 255, 0.65);
+    --card-foreground: #451952;
+    --popover: #FFFFFF;
+    --popover-foreground: #451952;
+    --primary: #F39F5A;
+    --primary-foreground: #451952;
+    --secondary: #F3E8EE;
+    --secondary-foreground: #451952;
+    --muted: #F3E8EE;
+    --muted-foreground: #7A5568;
+    --accent: #FBE3CB;
+    --accent-foreground: #451952;
+    --destructive: #D64545;
+    --border: rgba(69, 25, 82, 0.10);
+    --input: rgba(69, 25, 82, 0.16);
+    --ring: rgba(174, 68, 90, 0.45);
+
+    --gold: #F39F5A;
+    --gold-foreground: #451952;
+    --gold-soft: #FBE3CB;
+    --success: #2F9E68;
+    --success-foreground: #FFFFFF;
+    --danger: #D64545;
+    --danger-foreground: #FFFFFF;
+
+    --chart-1: #451952;
+    --chart-2: #F39F5A;
+    --chart-3: #AE445A;
+    --chart-4: #662549;
+    --chart-5: #2F9E68;
+
+    --radius: 1rem;
+
+    --sidebar: #451952;
+    --sidebar-foreground: #F3E8EE;
+    --sidebar-primary: #F39F5A;
+    --sidebar-primary-foreground: #451952;
+    --sidebar-accent: rgba(255, 255, 255, 0.08);
+    --sidebar-accent-foreground: #FBE3CB;
+    --sidebar-border: rgba(255, 255, 255, 0.1);
+    --sidebar-ring: #F39F5A;
 }
 
 .dark {
-    --background: oklch(0.17 0.025 258);
-    --foreground: oklch(0.94 0.01 250);
-    --card: oklch(0.21 0.03 258);
-    --card-foreground: oklch(0.94 0.01 250);
-    --popover: oklch(0.21 0.03 258);
-    --popover-foreground: oklch(0.94 0.01 250);
-    --primary: oklch(0.72 0.13 78);
-    --primary-foreground: oklch(0.18 0.03 255);
-    --secondary: oklch(0.27 0.03 258);
-    --secondary-foreground: oklch(0.94 0.01 250);
-    --muted: oklch(0.27 0.03 258);
-    --muted-foreground: oklch(0.68 0.03 250);
-    --accent: oklch(0.3 0.05 258);
-    --accent-foreground: oklch(0.94 0.01 250);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.72 0.13 78 / 40%);
-    --gold: oklch(0.75 0.13 78);
-    --gold-foreground: oklch(0.18 0.03 255);
-    --chart-1: oklch(0.65 0.1 235);
-    --chart-2: oklch(0.75 0.13 78);
-    --chart-3: oklch(0.6 0.09 200);
-    --chart-4: oklch(0.65 0.14 30);
-    --chart-5: oklch(0.65 0.1 165);
-    --sidebar: oklch(0.14 0.025 258);
-    --sidebar-foreground: oklch(0.94 0.01 250);
-    --sidebar-primary: oklch(0.75 0.13 78);
-    --sidebar-primary-foreground: oklch(0.18 0.03 255);
-    --sidebar-accent: oklch(0.22 0.03 258);
-    --sidebar-accent-foreground: oklch(0.94 0.01 250);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.75 0.13 78);
+    --bg-base: #1A0E20;
+    --bg-gradient: linear-gradient(160deg, #1F1226 0%, #150B19 100%);
+    --glass-surface: rgba(45, 24, 54, 0.55);
+    --glass-border: rgba(255, 255, 255, 0.08);
+
+    --background: #1A0E20;
+    --foreground: #F3E8EE;
+    --card: rgba(45, 24, 54, 0.55);
+    --card-foreground: #F3E8EE;
+    --popover: #251530;
+    --popover-foreground: #F3E8EE;
+    --primary: #F39F5A;
+    --primary-foreground: #1A0E20;
+    --secondary: #2E1B38;
+    --secondary-foreground: #F3E8EE;
+    --muted: #2E1B38;
+    --muted-foreground: #C9A8BC;
+    --accent: #3A2145;
+    --accent-foreground: #FBE3CB;
+    --destructive: #D64545;
+    --border: rgba(255, 255, 255, 0.08);
+    --input: rgba(255, 255, 255, 0.14);
+    --ring: rgba(243, 159, 90, 0.5);
+
+    --gold: #F39F5A;
+    --gold-foreground: #1A0E20;
+    --gold-soft: #4A2E1C;
+    --success: #3DBE7E;
+    --success-foreground: #0F2E1D;
+    --danger: #E8707A;
+    --danger-foreground: #34090C;
+
+    --chart-1: #F39F5A;
+    --chart-2: #E8899F;
+    --chart-3: #C58FD1;
+    --chart-4: #3DBE7E;
+    --chart-5: #E8707A;
+
+    --radius: 1rem;
+
+    --sidebar: #140A18;
+    --sidebar-foreground: #F3E8EE;
+    --sidebar-primary: #F39F5A;
+    --sidebar-primary-foreground: #1A0E20;
+    --sidebar-accent: rgba(255, 255, 255, 0.06);
+    --sidebar-accent-foreground: #FBE3CB;
+    --sidebar-border: rgba(255, 255, 255, 0.08);
+    --sidebar-ring: #F39F5A;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
     }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
+    background: var(--bg-gradient);
+    background-attachment: fixed;
     }
   html {
     @apply font-sans;
+    /* Reserve the scrollbar's width whether or not it's currently needed — otherwise a
+       layout change that nudges page height across the scrollbar threshold (e.g. pushing
+       a KPI card down a row) toggles the scrollbar on/off, which changes the viewport
+       width, which can retrigger the very layout change that caused it. */
+    scrollbar-gutter: stable;
     }
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      transition: none !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+}
+
+@layer components {
+  .glass-panel {
+    background: var(--glass-surface);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 8px 30px rgba(27, 42, 86, 0.06);
+  }
 }

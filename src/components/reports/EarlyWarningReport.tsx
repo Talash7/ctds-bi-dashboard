@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/ui/status-badge'
 import {
   Table,
   TableBody,
@@ -81,7 +82,7 @@ export function EarlyWarningReport({ students, results }: { students: Student[];
               <TableCell dir="auto">{student.name}</TableCell>
               <TableCell>{student.level}</TableCell>
               <TableCell>
-                <Badge variant="outline">{student.enrollment_status}</Badge>
+                <StatusBadge status={student.enrollment_status} />
               </TableCell>
               <TableCell className="space-x-1">
                 {reasons.map((r) => (

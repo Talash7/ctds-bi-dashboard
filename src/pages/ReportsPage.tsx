@@ -1,4 +1,5 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DeanListReport } from '@/components/reports/DeanListReport'
 import { EarlyWarningReport } from '@/components/reports/EarlyWarningReport'
@@ -6,6 +7,10 @@ import { CourseDifficultyReport } from '@/components/reports/CourseDifficultyRep
 import { LevelProgressionReport } from '@/components/reports/LevelProgressionReport'
 import { GradeDistributionReport } from '@/components/reports/GradeDistributionReport'
 import { ProgramSummaryReport } from '@/components/reports/ProgramSummaryReport'
+import { GpaAnalysisReport } from '@/components/reports/GpaAnalysisReport'
+import { StudentPerformanceReport } from '@/components/reports/StudentPerformanceReport'
+import { ComparativeAnalysisReport } from '@/components/reports/ComparativeAnalysisReport'
+import { CohortTrackingReport } from '@/components/reports/CohortTrackingReport'
 import { useStudents } from '@/hooks/useStudents'
 import { useCourses } from '@/hooks/useCourses'
 import { useResults } from '@/hooks/useResults'
@@ -23,11 +28,8 @@ export default function ReportsPage() {
     studentsLoading || coursesLoading || resultsLoading || programsLoading || programStatsLoading
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">Reports</h1>
-        <p className="text-muted-foreground">Pre-defined institutional reports, exportable as CSV</p>
-      </div>
+    <div className="space-y-3">
+      <PageHeader title="Reports" subtitle="Pre-defined institutional reports, exportable as CSV" />
 
       {loading ? (
         <div className="space-y-2">
@@ -44,6 +46,10 @@ export default function ReportsPage() {
             <TabsTrigger value="level-progression">Level Progression</TabsTrigger>
             <TabsTrigger value="grade-distribution">Grade Distribution</TabsTrigger>
             <TabsTrigger value="program-summary">Program Summary</TabsTrigger>
+            <TabsTrigger value="gpa-analysis">GPA Analysis</TabsTrigger>
+            <TabsTrigger value="student-performance">Student Performance</TabsTrigger>
+            <TabsTrigger value="comparative-analysis">Comparative Analysis</TabsTrigger>
+            <TabsTrigger value="cohort-tracking">Cohort Tracking</TabsTrigger>
           </TabsList>
           <TabsContent value="deans-list">
             <DeanListReport students={students} />
@@ -62,6 +68,18 @@ export default function ReportsPage() {
           </TabsContent>
           <TabsContent value="program-summary">
             <ProgramSummaryReport programs={programs} students={students} stats={programStats} />
+          </TabsContent>
+          <TabsContent value="gpa-analysis">
+            <GpaAnalysisReport students={students} programs={programs} />
+          </TabsContent>
+          <TabsContent value="student-performance">
+            <StudentPerformanceReport students={students} results={results} />
+          </TabsContent>
+          <TabsContent value="comparative-analysis">
+            <ComparativeAnalysisReport students={students} results={results} />
+          </TabsContent>
+          <TabsContent value="cohort-tracking">
+            <CohortTrackingReport students={students} results={results} />
           </TabsContent>
         </Tabs>
       )}

@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { GRADE_LETTERS, gradePointsFor, statusFor } from '@/lib/grades'
+import { deriveResultFields } from '@/lib/grades'
 import type { ImportLookups } from './lookups'
 import type { TablesInsert } from '@/types/database.types'
 
@@ -7,8 +7,11 @@ export type ImportEntityKey = 'students' | 'programs' | 'courses' | 'results'
 
 export interface ValidationResult<T> {
   errors: string[]
+  warnings?: string[]
   value?: T
 }
+
+const MIN_ADMISSION_YEAR = 2010
 
 export interface ImportConfig<T> {
   key: ImportEntityKey
@@ -69,8 +72,24 @@ const studentsConfig: ImportConfig<TablesInsert<'students'>> = {
   key: 'students',
   label: 'Students',
   table: 'students',
-  templateHeaders: ['student_code', 'name', 'program_name', 'level', 'enrollment_status', 'gpa'],
-  templateExample: ['1234567890', 'اسم الطالب', 'دبلوم تقانة المعلومات', '1', 'Active - Passed', ''],
+  templateHeaders: [
+    'student_code',
+    'name',
+    'program_name',
+    'level',
+    'enrollment_status',
+    'admission_year',
+    'batch',
+  ],
+  templateExample: [
+    '1234567890',
+    'اسم الطالب',
+    'دبلوم تقانة المعلومات',
+    '1',
+    'Active - Passed',
+    '2024',
+    'A',
+  ],
   previewColumns: [
     { header: 'Code', get: (r) => r.student_code },
     { header: 'Name', get: (r) => r.name },
@@ -83,31 +102,51 @@ const studentsConfig: ImportConfig<TablesInsert<'students'>> = {
     const level = parseLevel(raw.level)
 
     if (!studentCode) errors.push('student_code is required')
+    // A colliding student_code is rejected outright rather than silently suffixed —
+    // real ID collisions between different students need manual review, not an
+    // auto-generated "-DUP2"-style code that would break downstream derived fields.
     else if (lookups.studentByCode.has(studentCode))
-      errors.push(`Student code "${studentCode}" already exists`)
+      errors.push(`Student code "${studentCode}" already exists — review for a possible ID collision before re-importing`)
     if (!name) errors.push('name is required')
     if (!programName) errors.push('program_name is required')
     else if (!lookups.programsByName.has(programName))
       errors.push(`Unknown program "${programName}"`)
     if (level == null) errors.push('level must be 1, 2, or 3')
 
-    let gpa: number | null = null
-    if (raw.gpa?.trim()) {
-      gpa = Number(raw.gpa)
-      if (Number.isNaN(gpa) || gpa < 0 || gpa > 4) errors.push('gpa must be a number between 0 and 4')
+    // admission_year always comes from this explicit column, never derived from
+    // student_code — a prior one-off migration script parsed it from the code's
+    // suffix and produced garbage (e.g. 2099) for codes that don't follow that
+    // convention, or for codes suffixed with "-DUP2" to resolve a collision.
+    let admissionYear: number | null = null
+    const warnings: string[] = []
+    if (raw.admission_year?.trim()) {
+      const parsed = Number(raw.admission_year)
+      const currentYear = new Date().getFullYear()
+      if (!Number.isInteger(parsed)) {
+        errors.push('admission_year must be a whole number')
+      } else if (parsed < MIN_ADMISSION_YEAR || parsed > currentYear) {
+        // Out of plausible range: don't write it, don't block the row — flag for review instead.
+        warnings.push(
+          `admission_year "${raw.admission_year}" is outside the plausible range (${MIN_ADMISSION_YEAR}-${currentYear}) and was left blank`,
+        )
+      } else {
+        admissionYear = parsed
+      }
     }
 
     if (errors.length) return { errors }
     const program = lookups.programsByName.get(programName)!
     return {
       errors,
+      warnings,
       value: {
         student_code: studentCode,
         name,
         program_id: program.id,
         level: level!,
         enrollment_status: raw.enrollment_status?.trim() || 'Active - Passed',
-        gpa,
+        admission_year: admissionYear,
+        batch: raw.batch?.trim() || null,
       },
     }
   },
@@ -162,19 +201,19 @@ const resultsConfig: ImportConfig<TablesInsert<'results'>> = {
   key: 'results',
   label: 'Results',
   table: 'results',
-  templateHeaders: ['student_code', 'course_code', 'level', 'grade_letter', 'exam_type'],
-  templateExample: ['1234567890', 'كود101', '1', 'A', 'Final'],
+  templateHeaders: ['student_code', 'course_code', 'level', 'score', 'exam_type'],
+  templateExample: ['1234567890', 'كود101', '1', '87.5', 'Final'],
   previewColumns: [
     { header: 'Student', get: (r) => r.student_code },
     { header: 'Course', get: (r) => r.course_code },
-    { header: 'Grade', get: (r) => r.grade_letter },
+    { header: 'Score', get: (r) => r.score },
   ],
   validateRow: (raw, lookups) => {
     const errors: string[] = []
     const studentCode = raw.student_code?.trim()
     const courseCode = raw.course_code?.trim()
     const level = parseLevel(raw.level)
-    const gradeLetter = raw.grade_letter?.trim()
+    const scoreRaw = raw.score?.trim()
 
     if (!studentCode) errors.push('student_code is required')
     else if (!lookups.studentByCode.has(studentCode))
@@ -183,8 +222,14 @@ const resultsConfig: ImportConfig<TablesInsert<'results'>> = {
     else if (!lookups.courseByCode.has(courseCode))
       errors.push(`Unknown course code "${courseCode}"`)
     if (level == null) errors.push('level must be 1, 2, or 3')
-    if (!gradeLetter || !GRADE_LETTERS.includes(gradeLetter as (typeof GRADE_LETTERS)[number]))
-      errors.push(`grade_letter must be one of ${GRADE_LETTERS.join(', ')}`)
+
+    let score: number | null = null
+    if (scoreRaw) {
+      score = Number(scoreRaw)
+      if (Number.isNaN(score) || score < 0 || score > 100) {
+        errors.push('score must be a number between 0 and 100, or left blank for an absence')
+      }
+    }
 
     const student = lookups.studentByCode.get(studentCode)
     const course = lookups.courseByCode.get(courseCode)
@@ -196,15 +241,17 @@ const resultsConfig: ImportConfig<TablesInsert<'results'>> = {
     }
 
     if (errors.length) return { errors }
+    const derived = deriveResultFields(score)
     return {
       errors,
       value: {
         student_id: student!.id,
         course_id: course!.id,
         level: level!,
-        grade_letter: gradeLetter,
-        grade_points: gradePointsFor(gradeLetter),
-        status: statusFor(gradeLetter),
+        score,
+        grade_letter: derived.grade_letter,
+        grade_points: derived.grade_points,
+        status: derived.status,
         exam_type: raw.exam_type?.trim() || 'Final',
       },
     }

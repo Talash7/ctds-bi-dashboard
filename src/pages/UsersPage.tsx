@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, ShieldOff } from 'lucide-react'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
@@ -129,17 +130,17 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Users &amp; Roles</h1>
-          <p className="text-muted-foreground">Manage dashboard accounts and role assignments</p>
-        </div>
-        <Button onClick={() => setFormOpen(true)}>
-          <Plus className="size-4" />
-          Add user
-        </Button>
-      </div>
+    <div className="space-y-3">
+      <PageHeader
+        title="Users & Roles"
+        subtitle="Manage dashboard accounts and role assignments"
+        actions={
+          <Button onClick={() => setFormOpen(true)}>
+            <Plus className="size-4" />
+            Add user
+          </Button>
+        }
+      />
 
       {createdCredentials && (
         <div className="rounded-md border border-gold bg-gold/10 p-4 text-sm">

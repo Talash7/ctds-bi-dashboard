@@ -3,14 +3,14 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { navItems } from './nav-config'
 
-export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
+export function SidebarNav({ onNavigate, collapsed }: { onNavigate?: () => void; collapsed?: boolean }) {
   const { role } = useAuth()
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className="px-5 py-6">
-        <p className="text-sm font-semibold tracking-wide text-sidebar-foreground">CTDS</p>
-        <p className="text-xs text-sidebar-foreground/70">BI Dashboard</p>
+      <div className={cn('px-5 py-6', collapsed && 'px-3 text-center')}>
+        <p className="text-sm font-semibold tracking-wide text-sidebar-foreground">{collapsed ? 'C' : 'CTDS'}</p>
+        {!collapsed && <p className="text-xs text-sidebar-foreground/70">BI Dashboard</p>}
       </div>
       <nav className="flex-1 space-y-1 px-3">
         {navItems
@@ -22,17 +22,19 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                 key={item.to}
                 to={item.to}
                 onClick={onNavigate}
+                title={collapsed ? item.label : undefined}
                 className={({ isActive }) =>
                   cn(
                     'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    collapsed && 'justify-center px-2',
                     isActive
                       ? 'bg-sidebar-accent text-sidebar-primary'
                       : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground',
                   )
                 }
               >
-                <Icon className="size-4" />
-                {item.label}
+                <Icon className="size-4 shrink-0" />
+                {!collapsed && item.label}
               </NavLink>
             )
           })}

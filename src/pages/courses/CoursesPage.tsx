@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { BookOpen, Layers, Award, Plus, Pencil, Trash2 } from 'lucide-react'
-import { KpiCard } from '@/components/dashboard/KpiCard'
+import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { KpiGrid } from '@/components/dashboard/KpiGrid'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { CourseForm } from '@/components/courses/CourseForm'
 import { useCourses, type Course } from '@/hooks/useCourses'
 import { useCourseStats } from '@/hooks/useCourseStats'
@@ -42,6 +43,7 @@ export default function CoursesPage() {
   const { stats, loading: statsLoading } = useCourseStats()
   const { programs } = usePrograms()
   const writable = canWrite(role)
+  const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null)
 
   const [levelFilter, setLevelFilter] = useState('all')
   const [formOpen, setFormOpen] = useState(false)
@@ -53,11 +55,7 @@ export default function CoursesPage() {
     [courses, levelFilter],
   )
 
-  const kpis = useMemo(() => {
-    const perLevel = { 1: 0, 2: 0, 3: 0 } as Record<number, number>
-    for (const c of courses) perLevel[c.level] = (perLevel[c.level] ?? 0) + 1
-    return { total: courses.length, perLevel }
-  }, [courses])
+  const kpiDatasets = useMemo(() => ({ courses }), [courses])
 
   async function handleDelete() {
     if (!deleting) return
@@ -72,31 +70,34 @@ export default function CoursesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Courses</h1>
-          <p className="text-muted-foreground">Course catalog across all levels</p>
-        </div>
-        {writable && (
-          <Button
-            onClick={() => {
-              setEditing(null)
-              setFormOpen(true)
-            }}
-          >
-            <Plus className="size-4" />
-            Add course
-          </Button>
-        )}
-      </div>
+    <div className="space-y-3">
+      <PageHeader
+        title="Courses"
+        subtitle="Course catalog across all levels"
+        actions={
+          <>
+            {writable && (
+              <Button
+                onClick={() => {
+                  setEditing(null)
+                  setFormOpen(true)
+                }}
+              >
+                <Plus className="size-4" />
+                Add course
+              </Button>
+            )}
+            <div ref={setToolbarSlot} className="flex items-center gap-2" />
+          </>
+        }
+      />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Total courses" value={kpis.total} icon={BookOpen} accent />
-        <KpiCard label="Level 1 courses" value={kpis.perLevel[1] ?? 0} icon={Layers} />
-        <KpiCard label="Level 2 courses" value={kpis.perLevel[2] ?? 0} icon={Layers} />
-        <KpiCard label="Level 3 courses" value={kpis.perLevel[3] ?? 0} icon={Award} />
-      </div>
+      <KpiGrid
+        targetPage="courses"
+        datasets={kpiDatasets}
+        canEdit={role === 'admin'}
+        toolbarPortalTarget={toolbarSlot}
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         <Select value={levelFilter} onValueChange={(v) => v && setLevelFilter(v)}>

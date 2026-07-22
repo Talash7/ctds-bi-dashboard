@@ -1,16 +1,29 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { ClipboardList, TrendingUp, AlertOctagon, Plus, Pencil, Trash2 } from 'lucide-react'
-import { KpiCard } from '@/components/dashboard/KpiCard'
+import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { KpiGrid } from '@/components/dashboard/KpiGrid'
+import { PageHeader } from '@/components/layout/PageHeader'
+import type { ModuleKpiWithSource } from '@/hooks/useModuleKpis'
+import type { CustomValue } from '@/lib/dashboard/kpiEngine'
+
+// See DashboardPage.tsx's identical helper — kept local per-page since each page's
+// KpiGrid instance is its own independent fetch (see onKpisChange below).
+function getParam(kpi: ModuleKpiWithSource | undefined, n: 1 | 2, fallback: number): number {
+  const value = n === 1 ? kpi?.param_1_value : kpi?.param_2_value
+  return value ?? fallback
+}
 import { ResultForm } from '@/components/results/ResultForm'
 import { useResults, type Result } from '@/hooks/useResults'
 import { useStudents } from '@/hooks/useStudents'
 import { useCourses } from '@/hooks/useCourses'
+import { usePrograms } from '@/hooks/usePrograms'
 import { useAuth } from '@/hooks/useAuth'
 import { canWrite } from '@/lib/roles'
+import { statusGroup } from '@/lib/student-status'
+import type { BreakdownValue } from '@/lib/dashboard/kpiEngine'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Select,
@@ -38,14 +51,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 
-const GRADE_ORDER = ['A', 'B', 'C', 'D', 'F', 'Abs']
-
 export default function ResultsPage() {
   const { role } = useAuth()
   const { results, loading, createResult, updateResult, deleteResult } = useResults()
   const { students } = useStudents()
   const { courses } = useCourses()
+  const { programs } = usePrograms()
   const writable = canWrite(role)
+  const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null)
 
   const [search, setSearch] = useState('')
   const [levelFilter, setLevelFilter] = useState('all')
@@ -53,6 +66,11 @@ export default function ResultsPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Result | null>(null)
   const [deleting, setDeleting] = useState<Result | null>(null)
+  const [resultsKpis, setResultsKpis] = useState<ModuleKpiWithSource[]>([])
+  const kpiByColumn = useMemo(
+    () => Object.fromEntries(resultsKpis.filter((k) => k.column_name).map((k) => [k.column_name as string, k])),
+    [resultsKpis],
+  )
 
   const filtered = useMemo(() => {
     return results.filter((r) => {
@@ -70,23 +88,82 @@ export default function ResultsPage() {
     })
   }, [results, levelFilter, statusFilter, search])
 
-  const kpis = useMemo(() => {
-    const gradeCounts: Record<string, number> = {}
+  const kpiCustomValues: Record<string, CustomValue> = useMemo(() => {
+    const atRiskThreshold = getParam(kpiByColumn['results_at_risk'], 1, 2)
     let passed = 0
     const failsByStudent = new Map<string, number>()
-
     for (const r of results) {
-      gradeCounts[r.grade_letter] = (gradeCounts[r.grade_letter] ?? 0) + 1
       if (r.status === 'Passed') passed++
       if (r.status === 'Failed') {
         failsByStudent.set(r.student_id, (failsByStudent.get(r.student_id) ?? 0) + 1)
       }
     }
-    const atRisk = Array.from(failsByStudent.values()).filter((n) => n >= 2).length
+    const atRisk = Array.from(failsByStudent.values()).filter((n) => n >= atRiskThreshold).length
     const passRate = results.length ? (passed / results.length) * 100 : null
+    return {
+      results_pass_rate: {
+        value: passRate,
+        format: 'percent',
+        context: passRate != null ? { type: 'proportion', value: passRate, total: 100 } : undefined,
+      },
+      results_at_risk: { value: atRisk },
+    }
+  }, [results, kpiByColumn])
 
-    return { gradeCounts, passRate, atRisk }
-  }, [results])
+  const kpiDatasets = useMemo(() => ({ results }), [results])
+
+  // "GPA by Level" (results_gpa_by_level) — Program filter (kpi.filter_value, set via the
+  // Edit KPI dialog's existing Program dropdown for program_id-filtered custom kpis) narrows
+  // both the top line and the per-level breakdown to one program; empty/null means all
+  // programs, same convention as Dean's List.
+  const gpaByLevelBreakdown = useMemo((): BreakdownValue => {
+    const programId = kpiByColumn['results_gpa_by_level']?.filter_value || null
+    const pool = students.filter((s) => s.gpa != null && (!programId || s.program_id === programId))
+    const avgOf = (list: typeof pool) => (list.length ? list.reduce((sum, s) => sum + (s.gpa ?? 0), 0) / list.length : null)
+    const segments = [1, 2, 3].map((level) => {
+      const value = avgOf(pool.filter((s) => s.level === level))
+      return { label: `Level ${level}`, value: value != null ? value.toFixed(2) : '—' }
+    })
+    return {
+      topLabel: 'Avg. GPA (all students)',
+      topValue: { value: avgOf(pool), format: 'decimal' },
+      segments,
+    }
+  }, [students, kpiByColumn])
+
+  // "GPA by Program (Graduated)" (results_gpa_by_program_graduated) — top 3 programs ranked
+  // by average GPA among their graduated students; built to scale past the current single
+  // program without any code changes once more programs/graduates exist.
+  const gpaByProgramGraduatedBreakdown = useMemo((): BreakdownValue => {
+    const graduated = students.filter((s) => statusGroup(s.enrollment_status) === 'graduated' && s.gpa != null)
+    const byProgram = new Map<string, number[]>()
+    for (const s of graduated) {
+      const list = byProgram.get(s.program_id) ?? []
+      list.push(s.gpa ?? 0)
+      byProgram.set(s.program_id, list)
+    }
+    const ranked = Array.from(byProgram.entries())
+      .map(([programId, gpas]) => ({
+        label: programs.find((p) => p.id === programId)?.name ?? 'Unknown program',
+        avg: gpas.reduce((sum, g) => sum + g, 0) / gpas.length,
+      }))
+      .sort((a, b) => b.avg - a.avg)
+      .slice(0, 3)
+    const overallAvg = graduated.length ? graduated.reduce((sum, s) => sum + (s.gpa ?? 0), 0) / graduated.length : null
+    return {
+      topLabel: 'Avg. GPA (graduated)',
+      topValue: { value: overallAvg, format: 'decimal' },
+      segments: ranked.map((r) => ({ label: r.label, value: r.avg.toFixed(2) })),
+    }
+  }, [students, programs])
+
+  const kpiCustomBreakdowns: Record<string, BreakdownValue> = useMemo(
+    () => ({
+      results_gpa_by_level: gpaByLevelBreakdown,
+      results_gpa_by_program_graduated: gpaByProgramGraduatedBreakdown,
+    }),
+    [gpaByLevelBreakdown, gpaByProgramGraduatedBreakdown],
+  )
 
   async function handleDelete() {
     if (!deleting) return
@@ -101,38 +178,38 @@ export default function ResultsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Results</h1>
-          <p className="text-muted-foreground">Course results across all students</p>
-        </div>
-        {writable && (
-          <Button
-            onClick={() => {
-              setEditing(null)
-              setFormOpen(true)
-            }}
-          >
-            <Plus className="size-4" />
-            Add result
-          </Button>
-        )}
-      </div>
+    <div className="space-y-3">
+      <PageHeader
+        title="Results"
+        subtitle="Course results across all students"
+        actions={
+          <>
+            {writable && (
+              <Button
+                onClick={() => {
+                  setEditing(null)
+                  setFormOpen(true)
+                }}
+              >
+                <Plus className="size-4" />
+                Add result
+              </Button>
+            )}
+            <div ref={setToolbarSlot} className="flex items-center gap-2" />
+          </>
+        }
+      />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {GRADE_ORDER.map((g) => (
-          <KpiCard key={g} label={`Grade ${g}`} value={kpis.gradeCounts[g] ?? 0} />
-        ))}
-        <KpiCard
-          label="Pass rate"
-          value={kpis.passRate != null ? `${kpis.passRate.toFixed(1)}%` : '—'}
-          icon={TrendingUp}
-          accent
-        />
-        <KpiCard label="At-risk students (2+ fails)" value={kpis.atRisk} icon={AlertOctagon} />
-        <KpiCard label="Total results" value={results.length} icon={ClipboardList} />
-      </div>
+      <KpiGrid
+        targetPage="results"
+        datasets={kpiDatasets}
+        customValues={kpiCustomValues}
+        customBreakdowns={kpiCustomBreakdowns}
+        programs={programs}
+        canEdit={role === 'admin'}
+        toolbarPortalTarget={toolbarSlot}
+        onKpisChange={setResultsKpis}
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         <Input
@@ -184,6 +261,7 @@ export default function ResultsPage() {
                 <TableHead>Student</TableHead>
                 <TableHead>Course</TableHead>
                 <TableHead>Level</TableHead>
+                <TableHead>Score</TableHead>
                 <TableHead>Grade</TableHead>
                 <TableHead>Points</TableHead>
                 <TableHead>Status</TableHead>
@@ -201,8 +279,9 @@ export default function ResultsPage() {
                     {r.courses?.code} — {r.courses?.name}
                   </TableCell>
                   <TableCell>{r.level}</TableCell>
+                  <TableCell>{r.score ?? '—'}</TableCell>
                   <TableCell>
-                    <Badge variant="outline">{r.grade_letter}</Badge>
+                    <StatusBadge status={r.grade_letter} />
                   </TableCell>
                   <TableCell>{r.grade_points}</TableCell>
                   <TableCell>{r.status}</TableCell>
@@ -228,7 +307,7 @@ export default function ResultsPage() {
               ))}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={writable ? 8 : 7} className="text-center text-muted-foreground">
+                  <TableCell colSpan={writable ? 9 : 8} className="text-center text-muted-foreground">
                     No results match these filters.
                   </TableCell>
                 </TableRow>

@@ -27,10 +27,10 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-svh items-center justify-center bg-background px-4">
+    <div className="flex min-h-svh items-center justify-center px-4">
       <Card className="w-full max-w-sm border-border">
         <CardHeader className="space-y-1 text-center">
-          <CardTitle className="text-xl font-semibold text-primary">CTDS BI Dashboard</CardTitle>
+          <CardTitle className="text-xl font-semibold text-foreground">CTDS BI Dashboard</CardTitle>
           <CardDescription>College of Technical and Developmental Studies</CardDescription>
         </CardHeader>
         <CardContent>

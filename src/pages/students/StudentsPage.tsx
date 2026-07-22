@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Users, UserCheck, GraduationCap, AlertTriangle, Plus, Pencil, Trash2 } from 'lucide-react'
-import { KpiCard } from '@/components/dashboard/KpiCard'
+import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { KpiGrid } from '@/components/dashboard/KpiGrid'
+import { PageHeader } from '@/components/layout/PageHeader'
+import type { CustomValue } from '@/lib/dashboard/kpiEngine'
 import { StudentForm } from '@/components/students/StudentForm'
 import { useStudents, type Student } from '@/hooks/useStudents'
 import { usePrograms } from '@/hooks/usePrograms'
@@ -10,7 +12,7 @@ import { canWrite } from '@/lib/roles'
 import { statusGroup } from '@/lib/student-status'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Select,
@@ -43,10 +45,13 @@ export default function StudentsPage() {
   const { students, loading, createStudent, updateStudent, deleteStudent } = useStudents()
   const { programs } = usePrograms()
   const writable = canWrite(role)
+  const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null)
 
   const [search, setSearch] = useState('')
   const [levelFilter, setLevelFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [batchFilter, setBatchFilter] = useState('all')
+  const [sortBy, setSortBy] = useState('student_code')
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Student | null>(null)
   const [deleting, setDeleting] = useState<Student | null>(null)
@@ -55,21 +60,30 @@ export default function StudentsPage() {
     () => Array.from(new Set(students.map((s) => s.enrollment_status))).sort(),
     [students],
   )
+  const batchOptions = useMemo(
+    () => Array.from(new Set(students.map((s) => s.batch).filter((b): b is string => !!b))).sort(),
+    [students],
+  )
 
   const filtered = useMemo(() => {
-    return students.filter((s) => {
+    const rows = students.filter((s) => {
       if (levelFilter !== 'all' && String(s.level) !== levelFilter) return false
       if (statusFilter !== 'all' && s.enrollment_status !== statusFilter) return false
+      if (batchFilter !== 'all' && s.batch !== batchFilter) return false
       if (search.trim()) {
         const q = search.trim().toLowerCase()
         if (!s.name.toLowerCase().includes(q) && !s.student_code.toLowerCase().includes(q)) return false
       }
       return true
     })
-  }, [students, levelFilter, statusFilter, search])
+    return [...rows].sort((a, b) => {
+      if (sortBy === 'admission_year') return (b.admission_year ?? 0) - (a.admission_year ?? 0)
+      if (sortBy === 'gpa') return (b.gpa ?? 0) - (a.gpa ?? 0)
+      return a.student_code.localeCompare(b.student_code)
+    })
+  }, [students, levelFilter, statusFilter, batchFilter, sortBy, search])
 
-  const kpis = useMemo(() => {
-    const total = students.length
+  const kpiCustomValues: Record<string, CustomValue> = useMemo(() => {
     let active = 0
     let graduated = 0
     let probation = 0
@@ -87,13 +101,14 @@ export default function StudentsPage() {
       } else if (group === 'probation') probation++
     }
     return {
-      total,
-      active,
-      graduated,
-      probation,
-      avgGpa: gpaCount ? (gpaSum / gpaCount).toFixed(2) : '—',
+      students_active: { value: active },
+      students_graduated: { value: graduated },
+      students_probation: { value: probation },
+      students_avg_gpa_graduated: { value: gpaCount ? gpaSum / gpaCount : null, format: 'decimal' },
     }
   }, [students])
+
+  const kpiDatasets = useMemo(() => ({ students }), [students])
 
   async function handleDelete() {
     if (!deleting) return
@@ -108,32 +123,35 @@ export default function StudentsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Students</h1>
-          <p className="text-muted-foreground">IT Diploma student roster</p>
-        </div>
-        {writable && (
-          <Button
-            onClick={() => {
-              setEditing(null)
-              setFormOpen(true)
-            }}
-          >
-            <Plus className="size-4" />
-            Add student
-          </Button>
-        )}
-      </div>
+    <div className="space-y-3">
+      <PageHeader
+        title="Students"
+        subtitle="IT Diploma student roster"
+        actions={
+          <>
+            {writable && (
+              <Button
+                onClick={() => {
+                  setEditing(null)
+                  setFormOpen(true)
+                }}
+              >
+                <Plus className="size-4" />
+                Add student
+              </Button>
+            )}
+            <div ref={setToolbarSlot} className="flex items-center gap-2" />
+          </>
+        }
+      />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Total students" value={kpis.total} icon={Users} />
-        <KpiCard label="Active" value={kpis.active} icon={UserCheck} />
-        <KpiCard label="Graduated" value={kpis.graduated} icon={GraduationCap} accent />
-        <KpiCard label="On probation" value={kpis.probation} icon={AlertTriangle} />
-        <KpiCard label="Avg. GPA (graduated)" value={kpis.avgGpa} />
-      </div>
+      <KpiGrid
+        targetPage="students"
+        datasets={kpiDatasets}
+        customValues={kpiCustomValues}
+        canEdit={role === 'admin'}
+        toolbarPortalTarget={toolbarSlot}
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         <Input
@@ -168,6 +186,33 @@ export default function StudentsPage() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={batchFilter} onValueChange={(v) => v && setBatchFilter(v)}>
+          <SelectTrigger className="w-36">
+            <SelectValue>{(v: string) => (v === 'all' ? 'All batches' : v)}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All batches</SelectItem>
+            {batchOptions.map((b) => (
+              <SelectItem key={b} value={b}>
+                {b}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={sortBy} onValueChange={(v) => v && setSortBy(v)}>
+          <SelectTrigger className="w-44">
+            <SelectValue>
+              {(v: string) =>
+                v === 'admission_year' ? 'Sort: Admission year' : v === 'gpa' ? 'Sort: GPA' : 'Sort: Code'
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="student_code">Sort: Code</SelectItem>
+            <SelectItem value="admission_year">Sort: Admission year</SelectItem>
+            <SelectItem value="gpa">Sort: GPA</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {loading ? (
@@ -184,6 +229,8 @@ export default function StudentsPage() {
               <TableHead>Name</TableHead>
               <TableHead>Program</TableHead>
               <TableHead>Level</TableHead>
+              <TableHead>Batch</TableHead>
+              <TableHead>Admitted</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>GPA</TableHead>
               {writable && <TableHead className="text-right">Actions</TableHead>}
@@ -196,8 +243,10 @@ export default function StudentsPage() {
                 <TableCell dir="auto">{s.name}</TableCell>
                 <TableCell dir="auto">{s.programs?.name ?? '—'}</TableCell>
                 <TableCell>{s.level}</TableCell>
+                <TableCell dir="auto">{s.batch ?? '—'}</TableCell>
+                <TableCell>{s.admission_year ?? '—'}</TableCell>
                 <TableCell>
-                  <Badge variant="outline">{s.enrollment_status}</Badge>
+                  <StatusBadge status={s.enrollment_status} />
                 </TableCell>
                 <TableCell>{s.gpa ?? '—'}</TableCell>
                 {writable && (
@@ -221,7 +270,7 @@ export default function StudentsPage() {
             ))}
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={writable ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={writable ? 9 : 8} className="text-center text-muted-foreground">
                   No students match these filters.
                 </TableCell>
               </TableRow>

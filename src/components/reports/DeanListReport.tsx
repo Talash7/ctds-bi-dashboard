@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/ui/status-badge'
 import {
   Table,
   TableBody,
@@ -60,7 +61,7 @@ export function DeanListReport({ students }: { students: Student[] }) {
               <TableCell className="font-mono text-sm">{s.student_code}</TableCell>
               <TableCell dir="auto">{s.name}</TableCell>
               <TableCell>
-                <Badge variant="outline">{s.enrollment_status}</Badge>
+                <StatusBadge status={s.enrollment_status} />
               </TableCell>
               <TableCell className="font-medium">
                 {s.gpa}
