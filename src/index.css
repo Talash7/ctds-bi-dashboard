@@ -202,3 +202,11 @@
     box-shadow: 0 8px 30px rgba(27, 42, 86, 0.06);
   }
 }
+
+/* react-resizable's handle is a fixed black-SVG data-URI (see react-resizable/css/styles.css)
+   — invisible against dark mode's dark card backgrounds. It can't be recolored via a normal
+   CSS color property since it's a background-image, so this inverts it to white instead. */
+.dark .react-resizable-handle {
+  filter: invert(1);
+  opacity: 0.6;
+}

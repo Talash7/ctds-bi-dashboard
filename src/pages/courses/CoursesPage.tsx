@@ -8,6 +8,8 @@ import { useCourses, type Course } from '@/hooks/useCourses'
 import { useCourseStats } from '@/hooks/useCourseStats'
 import { usePrograms } from '@/hooks/usePrograms'
 import { useAuth } from '@/hooks/useAuth'
+import type { ModuleKpiWithSource } from '@/hooks/useModuleKpis'
+import { useTabFilters } from '@/hooks/useTabFilters'
 import { canWrite } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -49,6 +51,10 @@ export default function CoursesPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Course | null>(null)
   const [deleting, setDeleting] = useState<Course | null>(null)
+  const [coursesKpis, setCoursesKpis] = useState<ModuleKpiWithSource[]>([])
+  // Courses tab's tab-wide filter is Program only, per the brief's per-tab list (per-KPI
+  // overrides still auto-detect Level too, since courses rows do carry one).
+  const tabFilters = useTabFilters(coursesKpis, { program: true, level: false })
 
   const filtered = useMemo(
     () => courses.filter((c) => levelFilter === 'all' || String(c.level) === levelFilter),
@@ -95,8 +101,11 @@ export default function CoursesPage() {
       <KpiGrid
         targetPage="courses"
         datasets={kpiDatasets}
+        programs={programs}
         canEdit={role === 'admin'}
+        tabFilters={tabFilters}
         toolbarPortalTarget={toolbarSlot}
+        onKpisChange={setCoursesKpis}
       />
 
       <div className="flex flex-wrap items-center gap-3">

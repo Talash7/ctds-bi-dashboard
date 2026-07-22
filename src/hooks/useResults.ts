@@ -5,8 +5,12 @@ import { useRealtimeTable } from '@/hooks/useRealtimeTable'
 import type { Tables, TablesInsert, TablesUpdate } from '@/types/database.types'
 
 export type Result = Tables<'results'> & {
-  students: { name: string; student_code: string } | null
-  courses: { name: string; code: string } | null
+  // program_id on both joined relations (not just name/code) so the global Filter panel can
+  // resolve "which program does this result belong to" — see runtimeFilter.ts's
+  // rowProgramId, which prefers the course's program (authoritative) and falls back to the
+  // student's.
+  students: { name: string; student_code: string; program_id: string } | null
+  courses: { name: string; code: string; program_id: string } | null
 }
 
 export function useResults() {
@@ -21,7 +25,7 @@ export function useResults() {
       const data = await fetchAllRows<Result>((from, to) =>
         supabase
           .from('results')
-          .select('*, students(name, student_code), courses(name, code)')
+          .select('*, students(name, student_code, program_id), courses(name, code, program_id)')
           .order('created_at', { ascending: false })
           .order('id')
           .range(from, to),

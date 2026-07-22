@@ -6,6 +6,7 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { Toaster } from '@/components/ui/sonner'
 import Login from '@/pages/Login'
+import ResetPasswordPage from '@/pages/ResetPasswordPage'
 
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
 const StudentsPage = lazy(() => import('@/pages/students/StudentsPage'))
@@ -29,6 +30,7 @@ function App() {
           <Suspense fallback={<PageFallback />}>
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route
                 element={
                   <ProtectedRoute>

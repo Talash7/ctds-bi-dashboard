@@ -20,7 +20,9 @@ import { usePrograms } from '@/hooks/usePrograms'
 import { useImportHistory } from '@/hooks/useImportHistory'
 import { useAuth } from '@/hooks/useAuth'
 import type { ModuleKpiWithSource } from '@/hooks/useModuleKpis'
+import { useTabFilters } from '@/hooks/useTabFilters'
 import type { CustomValue } from '@/lib/dashboard/kpiEngine'
+import { applyRuntimeFilter, type RuntimeFilter } from '@/lib/dashboard/runtimeFilter'
 import { statusGroup } from '@/lib/student-status'
 
 // Reads a code-computed KPI's Nth editable parameter (see KpiEditDialog's "Parameters"
@@ -55,14 +57,32 @@ export default function DashboardPage() {
 
   const loading = studentsLoading || coursesLoading || resultsLoading || programsLoading
 
+  // Every KPI on this tab supports both Program and Level (Dashboard queries students/
+  // results/courses throughout) — see the brief's per-tab tab-wide filter list.
+  const tabFilters = useTabFilters(dashboardKpis, { program: true, level: true })
+  // Resolves the effective runtime filter for one of this page's aggregation='custom' kpis
+  // (identified by its column_name code) — the global Filter panel's resolved value when
+  // set, falling back to the kpi's own persisted filter_value (its admin-configured default,
+  // e.g. Dean's List's Program picker) when the global system hasn't touched that field.
+  function filterFor(columnName: string): RuntimeFilter {
+    const kpi = kpiByColumn[columnName]
+    const resolved = kpi ? tabFilters.resolvedByKpi[kpi.id] : tabFilters.tabWide
+    return {
+      programId: resolved?.programId ?? (kpi?.filter_column === 'program_id' ? kpi.filter_value || null : null),
+      level: resolved?.level ?? null,
+    }
+  }
+
   const topLine = useMemo(() => {
-    const totalResults = results.length
-    const passed = results.filter((r) => r.status === 'Passed').length
+    const resultsForPassRate = applyRuntimeFilter(results, filterFor('dash_overall_pass_rate'))
+    const totalResults = resultsForPassRate.length
+    const passed = resultsForPassRate.filter((r) => r.status === 'Passed').length
     const overallPassRate = totalResults ? (passed / totalResults) * 100 : null
 
+    const studentsForGpa = applyRuntimeFilter(students, filterFor('dash_avg_gpa_graduated'))
     let gpaSum = 0
     let gpaCount = 0
-    for (const s of students) {
+    for (const s of studentsForGpa) {
       if (statusGroup(s.enrollment_status) === 'graduated' && s.gpa != null) {
         gpaSum += s.gpa
         gpaCount++
@@ -71,36 +91,53 @@ export default function DashboardPage() {
     const avgGpaGraduated = gpaCount ? gpaSum / gpaCount : null
 
     return { overallPassRate, avgGpaGraduated }
-  }, [students, results])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [students, results, kpiByColumn, tabFilters.resolvedByKpi, tabFilters.tabWide])
 
   const statusCounts = useMemo(() => {
+    const studentsForCounts = applyRuntimeFilter(students, filterFor('dash_active'))
     let active = 0
     let graduated = 0
     let probation = 0
     let other = 0
-    for (const s of students) {
+    for (const s of studentsForCounts) {
       const g = statusGroup(s.enrollment_status)
       if (g === 'active') active++
       else if (g === 'graduated') graduated++
       else if (g === 'probation') probation++
       else other++
     }
+    // dash_graduated/dash_probation share the same underlying student pool as dash_active
+    // above but can each carry their own per-KPI override, so re-derive their own counts
+    // from their own resolved filter instead of reusing `active`'s pool.
+    const graduatedCount = applyRuntimeFilter(students, filterFor('dash_graduated')).filter(
+      (s) => statusGroup(s.enrollment_status) === 'graduated',
+    ).length
+    const probationCount = applyRuntimeFilter(students, filterFor('dash_probation')).filter(
+      (s) => statusGroup(s.enrollment_status) === 'probation',
+    ).length
+
     const atRiskThreshold = getParam(kpiByColumn['dash_at_risk'], 1, 2)
+    const resultsForAtRisk = applyRuntimeFilter(results, filterFor('dash_at_risk'))
     const failsByStudent = new Map<string, number>()
-    for (const r of results) {
+    for (const r of resultsForAtRisk) {
       if (r.status === 'Failed') failsByStudent.set(r.student_id, (failsByStudent.get(r.student_id) ?? 0) + 1)
     }
     const atRisk = Array.from(failsByStudent.values()).filter((n) => n >= atRiskThreshold).length
+
     // Graduation only applies to the configured final-year level — dividing by every
     // student regardless of level (including earlier levels, who can't have graduated yet)
     // artificially deflates the rate. The denominator here is "of those who reached the
     // final year, how many graduated," not "of everyone enrolled, ever."
     const finalYearLevel = getParam(kpiByColumn['dash_graduation_rate'], 1, 3)
-    const level3Total = students.filter((s) => s.level === finalYearLevel).length
-    const graduationRate = level3Total > 0 ? (graduated / level3Total) * 100 : null
+    const studentsForGradRate = applyRuntimeFilter(students, filterFor('dash_graduation_rate'))
+    const level3Total = studentsForGradRate.filter((s) => s.level === finalYearLevel).length
+    const gradRateGraduated = studentsForGradRate.filter((s) => statusGroup(s.enrollment_status) === 'graduated').length
+    const graduationRate = level3Total > 0 ? (gradRateGraduated / level3Total) * 100 : null
 
-    return { active, graduated, probation, other, atRisk, graduationRate }
-  }, [students, results, kpiByColumn])
+    return { active, graduated: graduatedCount, probation: probationCount, other, atRisk, graduationRate }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [students, results, kpiByColumn, tabFilters.resolvedByKpi, tabFilters.tabWide])
 
   const deansList = useMemo(() => {
     // Graduation only ever happens at the program's final year — Dean's List used to let
@@ -110,23 +147,19 @@ export default function DashboardPage() {
     // two stay in sync and this can't be pointed at a level with no possible data.
     const level = getParam(kpiByColumn['dash_graduation_rate'], 1, 3)
     const topN = getParam(kpiByColumn['dash_panel_deans_list'], 1, 5)
-    const programId = kpiByColumn['dash_panel_deans_list']?.filter_value || null
-    return students
-      .filter(
-        (s) =>
-          s.level === level &&
-          statusGroup(s.enrollment_status) === 'graduated' &&
-          s.gpa != null &&
-          (!programId || s.program_id === programId),
-      )
+    const filter = filterFor('dash_panel_deans_list')
+    return applyRuntimeFilter(students, filter)
+      .filter((s) => s.level === level && statusGroup(s.enrollment_status) === 'graduated' && s.gpa != null)
       .sort((a, b) => (b.gpa ?? 0) - (a.gpa ?? 0))
       .slice(0, topN)
-  }, [students, kpiByColumn])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [students, kpiByColumn, tabFilters.resolvedByKpi, tabFilters.tabWide])
 
   const courseDifficulty = useMemo(() => {
     const cutoff = getParam(kpiByColumn['dash_course_difficulty'], 1, 70)
+    const resultsForDifficulty = applyRuntimeFilter(results, filterFor('dash_course_difficulty'))
     const acc: Record<string, { passed: number; total: number }> = {}
-    for (const r of results) {
+    for (const r of resultsForDifficulty) {
       acc[r.course_id] ??= { passed: 0, total: 0 }
       acc[r.course_id].total++
       if (r.status === 'Passed') acc[r.course_id].passed++
@@ -136,7 +169,8 @@ export default function DashboardPage() {
       if (c.total > 0 && (c.passed / c.total) * 100 < cutoff) flagged++
     }
     return flagged
-  }, [results, kpiByColumn])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results, kpiByColumn, tabFilters.resolvedByKpi, tabFilters.tabWide])
 
   const dataFreshness = useMemo(() => {
     const successful = recentImports.filter((r) => r.status === 'success' || r.status === 'partial')
@@ -151,8 +185,10 @@ export default function DashboardPage() {
   const gradeBoundaryRisk = useMemo(() => {
     const lower = getParam(kpiByColumn['dash_grade_boundary_risk'], 1, 38)
     const upper = getParam(kpiByColumn['dash_grade_boundary_risk'], 2, 41)
-    return results.filter((r) => r.score != null && r.score >= lower && r.score <= upper).length
-  }, [results, kpiByColumn])
+    const resultsForBoundary = applyRuntimeFilter(results, filterFor('dash_grade_boundary_risk'))
+    return resultsForBoundary.filter((r) => r.score != null && r.score >= lower && r.score <= upper).length
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results, kpiByColumn, tabFilters.resolvedByKpi, tabFilters.tabWide])
 
   // Values for `aggregation: 'custom'` module_kpis rows — multi-row/derived logic that
   // can't be expressed as a plain count/sum/avg, keyed by the row's `column_name` code.
@@ -321,6 +357,7 @@ export default function DashboardPage() {
         customPanels={customPanels}
         programs={programs}
         canEdit={role === 'admin'}
+        tabFilters={tabFilters}
         toolbarPortalTarget={toolbarSlot}
         onKpisChange={setDashboardKpis}
       />

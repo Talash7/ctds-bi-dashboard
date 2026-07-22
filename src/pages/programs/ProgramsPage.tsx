@@ -9,6 +9,8 @@ import { usePrograms, type Program } from '@/hooks/usePrograms'
 import { useProgramStats } from '@/hooks/useProgramStats'
 import { useStudents } from '@/hooks/useStudents'
 import { useAuth } from '@/hooks/useAuth'
+import type { ModuleKpiWithSource } from '@/hooks/useModuleKpis'
+import { useTabFilters } from '@/hooks/useTabFilters'
 import { canWrite } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -43,6 +45,13 @@ export default function ProgramsPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Program | null>(null)
   const [deleting, setDeleting] = useState<Program | null>(null)
+  const [programsKpis, setProgramsKpis] = useState<ModuleKpiWithSource[]>([])
+  // Programs tab's tab-wide filter is Program only, per the brief's per-tab list — the
+  // page's own "Total students" (a plain, non-custom kpi) is filtered automatically by
+  // KpiGrid; programs_overall_pass_rate is programs-sourced, so it's outside the auto-detect
+  // rule's scope (filtering "programs" rows by "one program" isn't meaningful) and doesn't
+  // need any wiring here.
+  const tabFilters = useTabFilters(programsKpis, { program: true, level: false })
 
   const kpiCustomValues: Record<string, CustomValue> = useMemo(() => {
     const rates = Object.values(stats)
@@ -93,8 +102,11 @@ export default function ProgramsPage() {
         targetPage="programs"
         datasets={kpiDatasets}
         customValues={kpiCustomValues}
+        programs={programs}
         canEdit={role === 'admin'}
+        tabFilters={tabFilters}
         toolbarPortalTarget={toolbarSlot}
+        onKpisChange={setProgramsKpis}
       />
 
       {loading ? (

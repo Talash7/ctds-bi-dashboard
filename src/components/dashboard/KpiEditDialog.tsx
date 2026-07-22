@@ -29,6 +29,10 @@ import { ChevronDown } from 'lucide-react'
 
 const AGGREGATIONS = ['count', 'sum', 'avg', 'max', 'min']
 const FORMATS = ['number', 'percent', 'currency', 'decimal']
+// A compound/breakdown kpi's "Top N students" parameter (see the GPA breakdown kpis on the
+// Students/Results tabs) gets a fixed-option Select instead of the generic free-number Input
+// every other param_1/param_2 gets, per the brief's explicit option set.
+const TOP_N_OPTIONS = [3, 4, 5, 10]
 
 // Which chart types need which extra config beyond group_by_column/column_name/aggregation
 // — drives which extra fields show up below. See DashboardCharts.tsx's CHART_TYPES comment
@@ -294,16 +298,34 @@ export function KpiEditDialog({
 
             {isCustom && (kpi?.param_1_label || kpi?.param_2_label) && (
               <div className="grid grid-cols-2 gap-4">
-                {kpi.param_1_label && (
+                {kpi.param_1_label === 'Top N students' ? (
                   <div className="space-y-2">
-                    <Label htmlFor="kpi-param-1">{kpi.param_1_label}</Label>
-                    <Input
-                      id="kpi-param-1"
-                      type="number"
-                      value={param1Value}
-                      onChange={(e) => setParam1Value(e.target.value)}
-                    />
+                    <Label>{kpi.param_1_label}</Label>
+                    <Select value={param1Value || '3'} onValueChange={(v) => v && setParam1Value(v)}>
+                      <SelectTrigger>
+                        <SelectValue>{(v: string) => `Top ${v}`}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TOP_N_OPTIONS.map((n) => (
+                          <SelectItem key={n} value={String(n)}>
+                            Top {n}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
+                ) : (
+                  kpi.param_1_label && (
+                    <div className="space-y-2">
+                      <Label htmlFor="kpi-param-1">{kpi.param_1_label}</Label>
+                      <Input
+                        id="kpi-param-1"
+                        type="number"
+                        value={param1Value}
+                        onChange={(e) => setParam1Value(e.target.value)}
+                      />
+                    </div>
+                  )
                 )}
                 {kpi.param_2_label && (
                   <div className="space-y-2">

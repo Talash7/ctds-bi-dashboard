@@ -24,6 +24,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useModuleKpis, type ModuleKpiWithSource } from '@/hooks/useModuleKpis'
 import type { Program } from '@/hooks/usePrograms'
+import type { UseTabFilters } from '@/hooks/useTabFilters'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import {
   chartCategoryDimension,
@@ -35,7 +36,9 @@ import {
   type ChartValue,
   type CustomValue,
 } from '@/lib/dashboard/kpiEngine'
+import { applyRuntimeFilter } from '@/lib/dashboard/runtimeFilter'
 import { MODULE_ICONS } from '@/lib/dashboard/moduleIcons'
+import { GlobalFilterPanel } from '@/components/dashboard/GlobalFilterPanel'
 
 const COLUMNS = 24
 // A small row-height unit gives resize handles fine-grained steps (10px per row) instead
@@ -205,6 +208,7 @@ export function KpiGrid({
   customBreakdowns,
   programs,
   canEdit,
+  tabFilters,
   toolbarPortalTarget,
   onKpisChange,
 }: {
@@ -220,6 +224,13 @@ export function KpiGrid({
   // fetched again here, same reasoning as `datasets` being passed in rather than re-fetched.
   programs?: Program[]
   canEdit?: boolean
+  // The page's own useTabFilters() instance — drives the always-visible Filter button/drawer
+  // and resolves each generically-computed (non aggregation='custom') kpi's effective runtime
+  // filter before it's handed to computeKpiValue/computeChartData. A page with
+  // aggregation='custom' kpis (breakdowns, bespoke customValues/customCharts) is responsible
+  // for reading this same instance's resolvedByKpi itself when building those — KpiGrid has
+  // no way to reach into a page's own bespoke computation code to filter it automatically.
+  tabFilters?: UseTabFilters
   // When provided, the Edit Layout / Save / Cancel / etc. toolbar renders inline with the
   // page title (via the PageHeader's `actions` slot) instead of its own row above the
   // grid — keeps the grid's first row of cards from being pushed down by a toolbar-sized
@@ -331,13 +342,18 @@ export function KpiGrid({
   const cards = useMemo(
     () =>
       effectiveKpis.map((kpi) => {
-        const rows = datasets[kpi.source_table] ?? []
+        const rawRows = datasets[kpi.source_table] ?? []
         if (kpi.display_type === 'header') {
           return { kpi }
         }
         if (kpi.display_type === 'panel') {
           return { kpi, panel: customPanels?.[kpi.column_name ?? ''] }
         }
+        // A generic (non aggregation='custom') kpi is filtered here, uniformly, from the
+        // page's resolved runtime filter — aggregation='custom' kpis are computed entirely
+        // by the page's own code (customValues/customCharts/customBreakdowns), so filtering
+        // those happens there instead, against this same tabFilters instance.
+        const rows = kpi.aggregation === 'custom' ? rawRows : applyRuntimeFilter(rawRows, tabFilters?.resolvedByKpi[kpi.id])
         if (kpi.display_type === 'chart') {
           return { kpi, chart: computeChartData(kpi, rows, customCharts) }
         }
@@ -347,7 +363,7 @@ export function KpiGrid({
         const cv = computeKpiValue(kpi, rows, customValues)
         return { kpi, value: formatKpiValue(cv), context: cv.context }
       }),
-    [effectiveKpis, datasets, customValues, customCharts, customPanels, customBreakdowns],
+    [effectiveKpis, datasets, customValues, customCharts, customPanels, customBreakdowns, tabFilters],
   )
 
   // Snapshots the current in-progress edit state (position, pending headers, staged
@@ -603,60 +619,64 @@ export function KpiGrid({
   // legible once it detaches from the page title and floats over scrolled-past content;
   // z-40 keeps it above grid cards (their own z-index only ever climbs via bringToFront,
   // but that's scoped to the grid's own stacking context either way).
-  const toolbar = canEdit && (
+  // The Filter button is visible to every role (not gated on canEdit like the rest of this
+  // toolbar) — day-to-day filtering happens here now instead of through per-KPI edit dialogs.
+  const toolbar = (canEdit || tabFilters) && (
     <div
       className={cn(
         'flex flex-wrap justify-end gap-2',
         editMode && 'sticky top-0 z-40 -mx-2 -my-1 rounded-lg bg-background/95 px-2 py-1 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80',
       )}
     >
-      {editMode ? (
-        <>
-          <Button size="sm" variant="outline" onClick={handleAddHeader}>
-            <Heading className="size-4" />
-            Add Header
+      {tabFilters && <GlobalFilterPanel filters={tabFilters} programs={programs ?? []} />}
+      {canEdit &&
+        (editMode ? (
+          <>
+            <Button size="sm" variant="outline" onClick={handleAddHeader}>
+              <Heading className="size-4" />
+              Add Header
+            </Button>
+            <Button size="sm" variant="outline" disabled={history.length === 0} onClick={handleUndo}>
+              <Undo2 className="size-4" />
+              Undo
+            </Button>
+            <Button size="sm" variant="outline" onClick={resetToSaved}>
+              <RotateCcw className="size-4" />
+              Reset
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setConfirmingResetDefault(true)}>
+              <RotateCcw className="size-4" />
+              Reset to Default
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setConfirmingSaveAsDefault(true)}>
+              <BookmarkPlus className="size-4" />
+              Save as Default
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleCancel}>
+              <X className="size-4" />
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleSave}>
+              <Save className="size-4" />
+              Save Layout
+            </Button>
+          </>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setEditMode(true)
+              setHistory([])
+              setRemovedIds(new Set())
+              setPendingHeaders({})
+              setFreeMoveHeaderIds(new Set())
+            }}
+          >
+            <Pencil className="size-4" />
+            Edit Layout
           </Button>
-          <Button size="sm" variant="outline" disabled={history.length === 0} onClick={handleUndo}>
-            <Undo2 className="size-4" />
-            Undo
-          </Button>
-          <Button size="sm" variant="outline" onClick={resetToSaved}>
-            <RotateCcw className="size-4" />
-            Reset
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setConfirmingResetDefault(true)}>
-            <RotateCcw className="size-4" />
-            Reset to Default
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setConfirmingSaveAsDefault(true)}>
-            <BookmarkPlus className="size-4" />
-            Save as Default
-          </Button>
-          <Button size="sm" variant="outline" onClick={handleCancel}>
-            <X className="size-4" />
-            Cancel
-          </Button>
-          <Button size="sm" onClick={handleSave}>
-            <Save className="size-4" />
-            Save Layout
-          </Button>
-        </>
-      ) : (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            setEditMode(true)
-            setHistory([])
-            setRemovedIds(new Set())
-            setPendingHeaders({})
-            setFreeMoveHeaderIds(new Set())
-          }}
-        >
-          <Pencil className="size-4" />
-          Edit Layout
-        </Button>
-      )}
+        ))}
     </div>
   )
 

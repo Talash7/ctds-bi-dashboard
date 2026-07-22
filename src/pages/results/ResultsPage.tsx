@@ -18,6 +18,8 @@ import { useStudents } from '@/hooks/useStudents'
 import { useCourses } from '@/hooks/useCourses'
 import { usePrograms } from '@/hooks/usePrograms'
 import { useAuth } from '@/hooks/useAuth'
+import { useTabFilters } from '@/hooks/useTabFilters'
+import { applyRuntimeFilter } from '@/lib/dashboard/runtimeFilter'
 import { canWrite } from '@/lib/roles'
 import { statusGroup } from '@/lib/student-status'
 import type { BreakdownValue } from '@/lib/dashboard/kpiEngine'
@@ -71,6 +73,17 @@ export default function ResultsPage() {
     () => Object.fromEntries(resultsKpis.filter((k) => k.column_name).map((k) => [k.column_name as string, k])),
     [resultsKpis],
   )
+  // Results tab queries results/students, both of which carry Program (results via its
+  // joined course/student) and Level directly — so both tab-wide fields apply here.
+  const tabFilters = useTabFilters(resultsKpis, { program: true, level: true })
+  function filterFor(columnName: string) {
+    const kpi = kpiByColumn[columnName]
+    const resolved = kpi ? tabFilters.resolvedByKpi[kpi.id] : tabFilters.tabWide
+    return {
+      programId: resolved?.programId ?? (kpi?.filter_column === 'program_id' ? kpi.filter_value || null : null),
+      level: resolved?.level ?? null,
+    }
+  }
 
   const filtered = useMemo(() => {
     return results.filter((r) => {
@@ -89,17 +102,18 @@ export default function ResultsPage() {
   }, [results, levelFilter, statusFilter, search])
 
   const kpiCustomValues: Record<string, CustomValue> = useMemo(() => {
+    const resultsForPassRate = applyRuntimeFilter(results, filterFor('results_pass_rate'))
+    const passed = resultsForPassRate.filter((r) => r.status === 'Passed').length
+    const passRate = resultsForPassRate.length ? (passed / resultsForPassRate.length) * 100 : null
+
     const atRiskThreshold = getParam(kpiByColumn['results_at_risk'], 1, 2)
-    let passed = 0
+    const resultsForAtRisk = applyRuntimeFilter(results, filterFor('results_at_risk'))
     const failsByStudent = new Map<string, number>()
-    for (const r of results) {
-      if (r.status === 'Passed') passed++
-      if (r.status === 'Failed') {
-        failsByStudent.set(r.student_id, (failsByStudent.get(r.student_id) ?? 0) + 1)
-      }
+    for (const r of resultsForAtRisk) {
+      if (r.status === 'Failed') failsByStudent.set(r.student_id, (failsByStudent.get(r.student_id) ?? 0) + 1)
     }
     const atRisk = Array.from(failsByStudent.values()).filter((n) => n >= atRiskThreshold).length
-    const passRate = results.length ? (passed / results.length) * 100 : null
+
     return {
       results_pass_rate: {
         value: passRate,
@@ -108,17 +122,16 @@ export default function ResultsPage() {
       },
       results_at_risk: { value: atRisk },
     }
-  }, [results, kpiByColumn])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results, kpiByColumn, tabFilters.resolvedByKpi, tabFilters.tabWide])
 
   const kpiDatasets = useMemo(() => ({ results }), [results])
 
-  // "GPA by Level" (results_gpa_by_level) — Program filter (kpi.filter_value, set via the
-  // Edit KPI dialog's existing Program dropdown for program_id-filtered custom kpis) narrows
-  // both the top line and the per-level breakdown to one program; empty/null means all
-  // programs, same convention as Dean's List.
+  // "GPA by Level" (results_gpa_by_level) — Program/Level filter (global Filter panel, or the
+  // kpi's own persisted default when the global system hasn't touched that field) narrows
+  // both the top line and the per-level breakdown.
   const gpaByLevelBreakdown = useMemo((): BreakdownValue => {
-    const programId = kpiByColumn['results_gpa_by_level']?.filter_value || null
-    const pool = students.filter((s) => s.gpa != null && (!programId || s.program_id === programId))
+    const pool = applyRuntimeFilter(students, filterFor('results_gpa_by_level')).filter((s) => s.gpa != null)
     const avgOf = (list: typeof pool) => (list.length ? list.reduce((sum, s) => sum + (s.gpa ?? 0), 0) / list.length : null)
     const segments = [1, 2, 3].map((level) => {
       const value = avgOf(pool.filter((s) => s.level === level))
@@ -129,13 +142,16 @@ export default function ResultsPage() {
       topValue: { value: avgOf(pool), format: 'decimal' },
       segments,
     }
-  }, [students, kpiByColumn])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [students, kpiByColumn, tabFilters.resolvedByKpi, tabFilters.tabWide])
 
   // "GPA by Program (Graduated)" (results_gpa_by_program_graduated) — top 3 programs ranked
   // by average GPA among their graduated students; built to scale past the current single
   // program without any code changes once more programs/graduates exist.
   const gpaByProgramGraduatedBreakdown = useMemo((): BreakdownValue => {
-    const graduated = students.filter((s) => statusGroup(s.enrollment_status) === 'graduated' && s.gpa != null)
+    const graduated = applyRuntimeFilter(students, filterFor('results_gpa_by_program_graduated')).filter(
+      (s) => statusGroup(s.enrollment_status) === 'graduated' && s.gpa != null,
+    )
     const byProgram = new Map<string, number[]>()
     for (const s of graduated) {
       const list = byProgram.get(s.program_id) ?? []
@@ -155,7 +171,8 @@ export default function ResultsPage() {
       topValue: { value: overallAvg, format: 'decimal' },
       segments: ranked.map((r) => ({ label: r.label, value: r.avg.toFixed(2) })),
     }
-  }, [students, programs])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [students, programs, kpiByColumn, tabFilters.resolvedByKpi, tabFilters.tabWide])
 
   const kpiCustomBreakdowns: Record<string, BreakdownValue> = useMemo(
     () => ({
@@ -207,6 +224,7 @@ export default function ResultsPage() {
         customBreakdowns={kpiCustomBreakdowns}
         programs={programs}
         canEdit={role === 'admin'}
+        tabFilters={tabFilters}
         toolbarPortalTarget={toolbarSlot}
         onKpisChange={setResultsKpis}
       />

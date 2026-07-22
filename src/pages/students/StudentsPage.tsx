@@ -3,11 +3,14 @@ import { toast } from 'sonner'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { KpiGrid } from '@/components/dashboard/KpiGrid'
 import { PageHeader } from '@/components/layout/PageHeader'
-import type { CustomValue } from '@/lib/dashboard/kpiEngine'
+import type { BreakdownValue, CustomValue } from '@/lib/dashboard/kpiEngine'
 import { StudentForm } from '@/components/students/StudentForm'
 import { useStudents, type Student } from '@/hooks/useStudents'
 import { usePrograms } from '@/hooks/usePrograms'
 import { useAuth } from '@/hooks/useAuth'
+import type { ModuleKpiWithSource } from '@/hooks/useModuleKpis'
+import { useTabFilters } from '@/hooks/useTabFilters'
+import { applyRuntimeFilter } from '@/lib/dashboard/runtimeFilter'
 import { canWrite } from '@/lib/roles'
 import { statusGroup } from '@/lib/student-status'
 import { Button } from '@/components/ui/button'
@@ -55,6 +58,22 @@ export default function StudentsPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Student | null>(null)
   const [deleting, setDeleting] = useState<Student | null>(null)
+  const [studentsKpis, setStudentsKpis] = useState<ModuleKpiWithSource[]>([])
+  const kpiByColumn = useMemo(
+    () => Object.fromEntries(studentsKpis.filter((k) => k.column_name).map((k) => [k.column_name as string, k])),
+    [studentsKpis],
+  )
+  // Students tab queries only the `students` table, so Program + Level are both meaningful
+  // tab-wide filters here (per the brief's per-tab list).
+  const tabFilters = useTabFilters(studentsKpis, { program: true, level: true })
+  function filterFor(columnName: string) {
+    const kpi = kpiByColumn[columnName]
+    const resolved = kpi ? tabFilters.resolvedByKpi[kpi.id] : tabFilters.tabWide
+    return {
+      programId: resolved?.programId ?? (kpi?.filter_column === 'program_id' ? kpi.filter_value || null : null),
+      level: resolved?.level ?? null,
+    }
+  }
 
   const statusOptions = useMemo(
     () => Array.from(new Set(students.map((s) => s.enrollment_status))).sort(),
@@ -84,29 +103,57 @@ export default function StudentsPage() {
   }, [students, levelFilter, statusFilter, batchFilter, sortBy, search])
 
   const kpiCustomValues: Record<string, CustomValue> = useMemo(() => {
-    let active = 0
-    let graduated = 0
-    let probation = 0
-    let gpaSum = 0
-    let gpaCount = 0
-    for (const s of students) {
-      const group = statusGroup(s.enrollment_status)
-      if (group === 'active') active++
-      else if (group === 'graduated') {
-        graduated++
-        if (s.gpa != null) {
-          gpaSum += s.gpa
-          gpaCount++
-        }
-      } else if (group === 'probation') probation++
-    }
+    const activePool = applyRuntimeFilter(students, filterFor('students_active'))
+    const graduatedPool = applyRuntimeFilter(students, filterFor('students_graduated'))
+    const probationPool = applyRuntimeFilter(students, filterFor('students_probation'))
+    const active = activePool.filter((s) => statusGroup(s.enrollment_status) === 'active').length
+    const graduated = graduatedPool.filter((s) => statusGroup(s.enrollment_status) === 'graduated').length
+    const probation = probationPool.filter((s) => statusGroup(s.enrollment_status) === 'probation').length
     return {
       students_active: { value: active },
       students_graduated: { value: graduated },
       students_probation: { value: probation },
-      students_avg_gpa_graduated: { value: gpaCount ? gpaSum / gpaCount : null, format: 'decimal' },
     }
-  }, [students])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [students, kpiByColumn, tabFilters.resolvedByKpi, tabFilters.tabWide])
+
+  // 4a: "Avg. GPA (graduated)" — top line + Top N graduated students ranked by GPA.
+  const gpaGraduatedBreakdown: BreakdownValue = useMemo(() => {
+    const topN = Number(kpiByColumn['students_avg_gpa_graduated']?.param_1_value ?? 3)
+    const pool = applyRuntimeFilter(students, filterFor('students_avg_gpa_graduated')).filter(
+      (s) => statusGroup(s.enrollment_status) === 'graduated' && s.gpa != null,
+    )
+    const avg = pool.length ? pool.reduce((sum, s) => sum + (s.gpa ?? 0), 0) / pool.length : null
+    const ranked = [...pool].sort((a, b) => (b.gpa ?? 0) - (a.gpa ?? 0)).slice(0, topN)
+    return {
+      topLabel: 'Avg. GPA (graduated)',
+      topValue: { value: avg, format: 'decimal' },
+      segments: ranked.map((s, i) => ({ label: `${i + 1}. ${s.name}`, value: (s.gpa ?? 0).toFixed(2) })),
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [students, kpiByColumn, tabFilters.resolvedByKpi, tabFilters.tabWide])
+
+  // 4b: "Avg. GPA (all students)" — top line + Top N students overall (any status) by GPA.
+  const gpaAllBreakdown: BreakdownValue = useMemo(() => {
+    const topN = Number(kpiByColumn['students_avg_gpa_all']?.param_1_value ?? 3)
+    const pool = applyRuntimeFilter(students, filterFor('students_avg_gpa_all')).filter((s) => s.gpa != null)
+    const avg = pool.length ? pool.reduce((sum, s) => sum + (s.gpa ?? 0), 0) / pool.length : null
+    const ranked = [...pool].sort((a, b) => (b.gpa ?? 0) - (a.gpa ?? 0)).slice(0, topN)
+    return {
+      topLabel: 'Avg. GPA (all students)',
+      topValue: { value: avg, format: 'decimal' },
+      segments: ranked.map((s, i) => ({ label: `${i + 1}. ${s.name}`, value: (s.gpa ?? 0).toFixed(2) })),
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [students, kpiByColumn, tabFilters.resolvedByKpi, tabFilters.tabWide])
+
+  const kpiCustomBreakdowns: Record<string, BreakdownValue> = useMemo(
+    () => ({
+      students_avg_gpa_graduated: gpaGraduatedBreakdown,
+      students_avg_gpa_all: gpaAllBreakdown,
+    }),
+    [gpaGraduatedBreakdown, gpaAllBreakdown],
+  )
 
   const kpiDatasets = useMemo(() => ({ students }), [students])
 
@@ -149,8 +196,12 @@ export default function StudentsPage() {
         targetPage="students"
         datasets={kpiDatasets}
         customValues={kpiCustomValues}
+        customBreakdowns={kpiCustomBreakdowns}
+        programs={programs}
         canEdit={role === 'admin'}
+        tabFilters={tabFilters}
         toolbarPortalTarget={toolbarSlot}
+        onKpisChange={setStudentsKpis}
       />
 
       <div className="flex flex-wrap items-center gap-3">
