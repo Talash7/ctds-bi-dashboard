@@ -210,3 +210,14 @@
   filter: invert(1);
   opacity: 0.6;
 }
+
+/* Hides the scrollbar on the Reports tab bar's horizontal scroll container — the fade edges
+   and arrow buttons are the intended scroll affordance, a visible scrollbar underneath them
+   is just noise. Scrolling itself (wheel/touch/drag/keyboard via the arrow buttons) still works. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

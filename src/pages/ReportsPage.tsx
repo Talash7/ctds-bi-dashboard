@@ -1,6 +1,9 @@
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 import { DeanListReport } from '@/components/reports/DeanListReport'
 import { EarlyWarningReport } from '@/components/reports/EarlyWarningReport'
 import { CourseDifficultyReport } from '@/components/reports/CourseDifficultyReport'
@@ -16,6 +19,80 @@ import { useCourses } from '@/hooks/useCourses'
 import { useResults } from '@/hooks/useResults'
 import { usePrograms } from '@/hooks/usePrograms'
 import { useProgramStats } from '@/hooks/useProgramStats'
+
+// The 10 report tabs don't fit on one line at most viewport widths — TabsList is `inline-flex
+// w-fit`, so left unconstrained it either wraps (overlapping the description text below, the
+// bug this fixes) or overflows off-screen. This wraps it in its own horizontally scrollable
+// track with fade edges + arrow buttons, and forces the tabs themselves to stay on one line.
+function ScrollableTabsList({ children }: { children: ReactNode }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(false)
+
+  const updateArrows = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    setCanScrollLeft(el.scrollLeft > 4)
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4)
+  }, [])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    updateArrows()
+    const resizeObserver = new ResizeObserver(updateArrows)
+    resizeObserver.observe(el)
+    el.addEventListener('scroll', updateArrows, { passive: true })
+    return () => {
+      resizeObserver.disconnect()
+      el.removeEventListener('scroll', updateArrows)
+    }
+  }, [updateArrows])
+
+  function scrollBy(delta: number) {
+    scrollRef.current?.scrollBy({ left: delta, behavior: 'smooth' })
+  }
+
+  return (
+    <div className="relative">
+      <div
+        className={cn(
+          'pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-background to-transparent transition-opacity',
+          canScrollLeft ? 'opacity-100' : 'opacity-0',
+        )}
+      />
+      <div
+        className={cn(
+          'pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-background to-transparent transition-opacity',
+          canScrollRight ? 'opacity-100' : 'opacity-0',
+        )}
+      />
+      {canScrollLeft && (
+        <button
+          type="button"
+          aria-label="Scroll tabs left"
+          onClick={() => scrollBy(-160)}
+          className="absolute left-0 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-full border bg-background p-1 shadow-sm hover:bg-muted"
+        >
+          <ChevronLeft className="size-4" />
+        </button>
+      )}
+      <div ref={scrollRef} className="no-scrollbar overflow-x-auto">
+        <TabsList className="w-max flex-nowrap">{children}</TabsList>
+      </div>
+      {canScrollRight && (
+        <button
+          type="button"
+          aria-label="Scroll tabs right"
+          onClick={() => scrollBy(160)}
+          className="absolute right-0 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-full border bg-background p-1 shadow-sm hover:bg-muted"
+        >
+          <ChevronRight className="size-4" />
+        </button>
+      )}
+    </div>
+  )
+}
 
 export default function ReportsPage() {
   const { students, loading: studentsLoading } = useStudents()
@@ -39,7 +116,7 @@ export default function ReportsPage() {
         </div>
       ) : (
         <Tabs defaultValue="deans-list">
-          <TabsList className="flex-wrap">
+          <ScrollableTabsList>
             <TabsTrigger value="deans-list">Dean's List</TabsTrigger>
             <TabsTrigger value="early-warning">Early Warning</TabsTrigger>
             <TabsTrigger value="course-difficulty">Course Difficulty</TabsTrigger>
@@ -50,7 +127,7 @@ export default function ReportsPage() {
             <TabsTrigger value="student-performance">Student Performance</TabsTrigger>
             <TabsTrigger value="comparative-analysis">Comparative Analysis</TabsTrigger>
             <TabsTrigger value="cohort-tracking">Cohort Tracking</TabsTrigger>
-          </TabsList>
+          </ScrollableTabsList>
           <TabsContent value="deans-list">
             <DeanListReport students={students} />
           </TabsContent>

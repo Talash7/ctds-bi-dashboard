@@ -1,7 +1,9 @@
-import { useMemo } from 'react'
-import { Download } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Download, Palette } from 'lucide-react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from 'recharts'
 import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { ColorPickerPopover } from '@/components/dashboard/ColorPickerPopover'
 import {
   Table,
   TableBody,
@@ -14,6 +16,12 @@ import { useChartTextColors, useTooltipStyle } from '@/components/dashboard/Dash
 import type { Student } from '@/hooks/useStudents'
 import type { Result } from '@/hooks/useResults'
 import { exportCsv } from '@/lib/export-csv'
+import {
+  getBatchColor,
+  loadCohortColorOverrides,
+  resetCohortColorOverride,
+  saveCohortColorOverride,
+} from '@/lib/chart-colors'
 
 const LEVELS = [1, 2, 3]
 // A batch with only a handful of students produces a noisy, not-really-meaningful average —
@@ -27,6 +35,7 @@ function fmt(n: number | null): string {
 export function CohortTrackingReport({ students, results }: { students: Student[]; results: Result[] }) {
   const tc = useChartTextColors()
   const tooltipStyle = useTooltipStyle()
+  const [colorOverrides, setColorOverrides] = useState(() => loadCohortColorOverrides())
 
   const { batches, chartData, table } = useMemo(() => {
     const studentById = new Map(students.map((s) => [s.id, s]))
@@ -82,15 +91,58 @@ export function CohortTrackingReport({ students, results }: { students: Student[
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           Average per-course grade points (0–4 scale), by admission batch, at each level — how each cohort
           performed as it progressed. Batches with fewer than {MIN_BATCH_SIZE} students are omitted.
         </p>
-        <Button variant="outline" size="sm" onClick={handleExport} disabled={batches.length === 0}>
-          <Download className="size-4" />
-          Export CSV
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          {batches.length > 0 && (
+            <Popover>
+              <PopoverTrigger
+                render={
+                  <Button variant="outline" size="sm">
+                    <Palette className="size-4" />
+                    Line colors
+                  </Button>
+                }
+              />
+              <PopoverContent className="w-72 gap-3" align="end">
+                <p className="text-xs text-muted-foreground">Customize each batch's line color.</p>
+                <div className="space-y-2">
+                  {batches.map((batch, i) => (
+                    <div key={batch} className="flex items-center justify-between gap-2">
+                      <span className="text-sm" dir="auto">
+                        {batch}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <ColorPickerPopover
+                          value={getBatchColor(batch, i, colorOverrides)}
+                          onChange={(hex) => setColorOverrides(saveCohortColorOverride(batch, hex))}
+                          label={`${batch} line color`}
+                        />
+                        {colorOverrides[batch] && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-9 px-2 text-xs"
+                            onClick={() => setColorOverrides(resetCohortColorOverride(batch))}
+                          >
+                            Reset
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={batches.length === 0}>
+            <Download className="size-4" />
+            Export CSV
+          </Button>
+        </div>
       </div>
 
       {batches.length === 0 ? (
@@ -114,7 +166,7 @@ export function CohortTrackingReport({ students, results }: { students: Student[
                     key={batch}
                     type="monotone"
                     dataKey={batch}
-                    stroke={tc.categorical[i % tc.categorical.length]}
+                    stroke={getBatchColor(batch, i, colorOverrides)}
                     strokeWidth={2}
                     dot={{ r: 3 }}
                   />

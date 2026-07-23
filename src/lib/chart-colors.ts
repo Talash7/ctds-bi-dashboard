@@ -36,6 +36,71 @@ export function getCategoricalOrder(dark: boolean): readonly string[] {
   return dark ? CATEGORICAL_ORDER_DARK : CATEGORICAL_ORDER
 }
 
+// Cohort Tracking's per-batch line colors need a much wider spread than CATEGORICAL_ORDER
+// (which is 4 near-identical dark plum/maroon shades — fine for a handful of KPI-chart
+// categories, but nearly indistinguishable as 6 simultaneous line-chart traces in light mode).
+// These are deliberately spread across the full hue wheel — not just the house plum/rose/amber
+// family — so all 6 admission batches stay distinguishable in both themes. Keyed by the exact
+// batch string so real data lines up; BATCH_COLOR_FALLBACK_CYCLE covers any batch beyond these.
+export const BATCH_COLORS: Record<string, string> = {
+  '2017/2018': '#451952',
+  '2018/2019': '#E74C3C',
+  '2019/2020': '#F39F5A',
+  '2020/2021': '#2ECC71',
+  '2021/2022': '#3498DB',
+  '2022/2023': '#9B59B6',
+}
+export const BATCH_COLOR_FALLBACK_CYCLE = Object.values(BATCH_COLORS)
+
+// User-customizable overrides for BATCH_COLORS, session-and-browser-persisted (not tied to any
+// module_kpis row, since batches are derived from students.batch rather than a KPI's own
+// category dimension) — mirrors the ColorPickerPopover-driven per-category color editing KPI
+// charts already have, so Cohort Tracking's lines aren't the one uneditable chart in the app.
+const COHORT_COLOR_OVERRIDES_KEY = 'ctds-cohort-batch-color-overrides'
+
+export function loadCohortColorOverrides(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(COHORT_COLOR_OVERRIDES_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function persistCohortColorOverrides(next: Record<string, string>) {
+  try {
+    localStorage.setItem(COHORT_COLOR_OVERRIDES_KEY, JSON.stringify(next))
+  } catch {
+    // Storage full or unavailable (private browsing) — customization just won't persist.
+  }
+}
+
+export function saveCohortColorOverride(batch: string, hex: string): Record<string, string> {
+  const next = { ...loadCohortColorOverrides(), [batch]: hex }
+  persistCohortColorOverrides(next)
+  return next
+}
+
+export function resetCohortColorOverride(batch: string): Record<string, string> {
+  const next = { ...loadCohortColorOverrides() }
+  delete next[batch]
+  persistCohortColorOverrides(next)
+  return next
+}
+
+export function getBatchColor(
+  batch: string,
+  index: number,
+  overrides: Record<string, string>,
+): string {
+  return (
+    overrides[batch] ??
+    BATCH_COLORS[batch] ??
+    BATCH_COLOR_FALLBACK_CYCLE[index % BATCH_COLOR_FALLBACK_CYCLE.length]
+  )
+}
+
 export const GRADE_COLORS: Record<string, string> = {
   A: CHART_COLORS.success,
   B: CHART_COLORS.success,
